@@ -82,6 +82,22 @@ export default function KitchenPage() {
     patchOrderLocal(orderId, { status: 'in_progress' })
   }
 
+  async function finishWeek() {
+    const open = orders.filter(o => o.status !== 'completed')
+    const blocked = open.filter(o => o.items.some(i => i.dispatch_status === 'pending'))
+    if (blocked.length) {
+      const names = [...new Set(blocked.map(o => o.location?.name_en))].join(', ')
+      alert(`Can't finish: ${blocked.length} order(s) still have unhandled items (${names}). Handle every item first.`)
+      return
+    }
+    if (!open.length) { alert('Nothing to finish — no open orders.'); return }
+    if (!confirm(`Finish kitchen for the week? This marks ${open.length} handled order(s) as complete. (Dispatch still sends them out; weekly archive stays on the Dispatch page.)`)) return
+    const ids = open.map(o => o.id)
+    const now = new Date().toISOString()
+    await supabase.from('orders').update({ status: 'completed', completed_at: now }).in('id', ids)
+    setOrders(os => os.map(o => ids.includes(o.id) ? { ...o, status: 'completed' } : o))
+  }
+
   async function sendToProcurement(item, order, targetLocId) {
     const { error } = await supabase.from('procurement_tasks').insert({
       item_name: item.item_name_snapshot,
@@ -146,9 +162,14 @@ export default function KitchenPage() {
           </div>
         )}
         {view === 'orders' && (
-          <label className="inline"><input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} /> show completed</label>
+          <div className="seg">
+            <button className={!showCompleted ? 'on' : ''} onClick={() => setShowCompleted(false)}>Open</button>
+            <button className={showCompleted ? 'on' : ''} onClick={() => setShowCompleted(true)}>Completed</button>
+          </div>
         )}
         <span className="muted">{orders.filter(o => o.status !== 'completed').length} open order(s)</span>
+        {view === 'orders' && !showCompleted &&
+          <button className="primary" onClick={finishWeek}>🍳 Finish kitchen week</button>}
         <button className="ghost" onClick={toggleCancelled}>
           {showCancelled ? 'Hide cancelled' : 'View cancelled'}
         </button>
@@ -156,8 +177,9 @@ export default function KitchenPage() {
 
       {view === 'items' && <ByItem orders={orders.filter(o => o.status !== 'completed')} range={range} onChanged={load} />}
 
-      {view === 'orders' && orders.filter(o => o.status !== 'completed').length === 0 && !showCompleted && <div className="center muted">No open orders. 🎉</div>}
-      {view === 'orders' && (showCompleted ? orders : orders.filter(o => o.status !== 'completed')).map(o => {
+      {view === 'orders' && !showCompleted && orders.filter(o => o.status !== 'completed').length === 0 && <div className="center muted">No open orders. 🎉</div>}
+      {view === 'orders' && showCompleted && orders.filter(o => o.status === 'completed').length === 0 && <div className="center muted">No completed orders yet this week.</div>}
+      {view === 'orders' && orders.filter(o => showCompleted ? o.status === 'completed' : o.status !== 'completed').map(o => {
         const isDone = o.status === 'completed'
         const handled = o.items.filter(i => i.dispatch_status !== 'pending').length
         const allHandled = o.items.length > 0 && handled === o.items.length
