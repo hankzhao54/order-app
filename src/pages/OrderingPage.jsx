@@ -23,6 +23,7 @@ export default function OrderingPage() {
   const [history, setHistory] = useState([])
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [amending, setAmending] = useState(null)   // { id, label } when adding to a locked order
 
   // staff (no fixed location) can pick a location to order for
   useEffect(() => {
@@ -77,8 +78,10 @@ export default function OrderingPage() {
     if (totalLines === 0) { setMsg('Cart is empty.'); return }
     setBusy(true); setMsg('')
     try {
-      const n = await submitOrder({ locationId: locId, orderType, lines, adhoc })
-      setCart({}); setAdhoc([]); setMsg(`✓ Order submitted — ${n} item(s).`)
+      const n = await submitOrder({ locationId: locId, orderType, lines, adhoc, parentOrderId: amending?.id })
+      setCart({}); setAdhoc([])
+      setMsg(amending ? `✓ Top-up submitted for ${amending.label} — ${n} item(s).` : `✓ Order submitted — ${n} item(s).`)
+      setAmending(null)
     } catch (e) { setMsg(e.message) } finally { setBusy(false) }
   }
 
@@ -95,6 +98,12 @@ export default function OrderingPage() {
   }
 
   function openHistory() { setTab('history'); loadHistory(locId).then(setHistory) }
+
+  function startAmend(o) {
+    setAmending({ id: o.id, label: `${o.order_type} order ${new Date(o.created_at).toLocaleDateString()}` })
+    setCart({}); setAdhoc([]); setTab('order')
+    setMsg('')
+  }
 
   // ---------- render ----------
   const ItemRow = ({ it }) => (
@@ -120,25 +129,33 @@ export default function OrderingPage() {
     <div className="orderpage">
       {/* sticky location bar */}
       <div className="locbar">
-        <div>
-          <span className="muted small">Ordering for</span>
-          <div className="locname">{locName || '—'}</div>
+        <div className="locpick">
+          <span className="locpin">📍</span>
+          {(isStaff || !locationId) ? (
+            <select className="locselect" value={locId} onChange={e => setLocId(e.target.value)}>
+              {locations.map(l => <option key={l.id} value={l.id}>{l.name_en}</option>)}
+            </select>
+          ) : (
+            <span className="locname">{locName || '—'}</span>
+          )}
         </div>
-        {(isStaff || !locationId) &&
-          <select value={locId} onChange={e => setLocId(e.target.value)}>
-            {locations.map(l => <option key={l.id} value={l.id}>{l.name_en}</option>)}
-          </select>}
-        <div className="tabs">
+        <div className="seg locbartabs">
           <button className={tab === 'order' ? 'on' : ''} onClick={() => setTab('order')}>Order</button>
           <button className={tab === 'history' ? 'on' : ''} onClick={openHistory}>History</button>
         </div>
       </div>
 
       {tab === 'history' ? (
-        <HistoryView history={history} />
+        <HistoryView history={history} onAmend={startAmend} />
       ) : (
         <div className="orderbody">
           <div className="browse">
+            {amending && (
+              <div className="amend-banner">
+                <span>➕ Adding a top-up to <b>{amending.label}</b>. Submit creates a linked urgent order.</span>
+                <button className="mini" onClick={() => { setAmending(null); setMsg('') }}>Cancel</button>
+              </div>
+            )}
             <input className="search" placeholder="Search all items…" value={q} onChange={e => setQ(e.target.value)} />
 
             {search ? (
@@ -227,7 +244,7 @@ export default function OrderingPage() {
   )
 }
 
-function HistoryView({ history }) {
+function HistoryView({ history, onAmend }) {
   if (!history.length) return <div className="center muted">No past orders for this location yet.</div>
   return (
     <div className="history">
@@ -237,7 +254,10 @@ function HistoryView({ history }) {
             <b>{new Date(o.created_at).toLocaleDateString()}</b>
             <span className={`tag ${o.order_type}`}>{o.order_type}</span>
             <span className={`tag st-${o.status}`}>{o.status}</span>
+            {o.parent_order_id && <span className="tag amend">top-up</span>}
             <span className="muted small">{o.items.length} items</span>
+            {onAmend && ['in_progress', 'submitted'].includes(o.status) &&
+              <button className="mini amend-btn" onClick={() => onAmend(o)}>➕ Add to this</button>}
           </div>
           <div className="hitems">
             {o.items.map(i => (

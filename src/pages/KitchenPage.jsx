@@ -17,13 +17,14 @@ export default function KitchenPage() {
   const [cancelled, setCancelled] = useState([])
   const [view, setView] = useState('orders')      // orders | items
   const [range, setRange] = useState('open')       // open | week
+  const [showCompleted, setShowCompleted] = useState(false)
   const [locations, setLocations] = useState([])
   const [procureFor, setProcureFor] = useState(null)  // { item, order } awaiting target store
 
   async function load() {
     setLoading(true)
     const { data } = await supabase.from('orders').select(SELECT)
-      .in('status', ['submitted', 'in_progress'])
+      .in('status', ['submitted', 'in_progress', 'completed'])
       .order('created_at', { ascending: true })
     setOrders(data || []); setLoading(false)
   }
@@ -71,7 +72,14 @@ export default function KitchenPage() {
   }
   async function completeOrder(orderId) {
     await supabase.from('orders').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', orderId)
-    setOrders(os => os.filter(o => o.id !== orderId))
+    patchOrderLocal(orderId, { status: 'completed' })
+  }
+  function patchOrderLocal(orderId, fields) {
+    setOrders(os => os.map(o => o.id === orderId ? { ...o, ...fields } : o))
+  }
+  async function reopenOrder(orderId) {
+    await supabase.from('orders').update({ status: 'in_progress', completed_at: null }).eq('id', orderId)
+    patchOrderLocal(orderId, { status: 'in_progress' })
   }
 
   async function sendToProcurement(item, order, targetLocId) {
@@ -137,28 +145,33 @@ export default function KitchenPage() {
             <button className={range === 'week' ? 'on' : ''} onClick={() => setRange('week')}>This week</button>
           </div>
         )}
-        <span className="muted">{orders.length} open order(s)</span>
+        {view === 'orders' && (
+          <label className="inline"><input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} /> show completed</label>
+        )}
+        <span className="muted">{orders.filter(o => o.status !== 'completed').length} open order(s)</span>
         <button className="ghost" onClick={toggleCancelled}>
           {showCancelled ? 'Hide cancelled' : 'View cancelled'}
         </button>
       </div>
 
-      {view === 'items' && <ByItem orders={orders} range={range} onChanged={load} />}
+      {view === 'items' && <ByItem orders={orders.filter(o => o.status !== 'completed')} range={range} onChanged={load} />}
 
-      {view === 'orders' && orders.length === 0 && <div className="center muted">No open orders. 🎉</div>}
-      {view === 'orders' && orders.map(o => {
+      {view === 'orders' && orders.filter(o => o.status !== 'completed').length === 0 && !showCompleted && <div className="center muted">No open orders. 🎉</div>}
+      {view === 'orders' && (showCompleted ? orders : orders.filter(o => o.status !== 'completed')).map(o => {
+        const isDone = o.status === 'completed'
         const handled = o.items.filter(i => i.dispatch_status !== 'pending').length
         const allHandled = o.items.length > 0 && handled === o.items.length
         const n = s => o.items.filter(i => i.dispatch_status === s).length
         const pend = n('pending'), rdy = n('ready'), sh = n('short'), un = n('unavailable'), dis = n('dispatched')
         const proc = n('procuring')
         return (
-          <div key={o.id} className="ticket">
+          <div key={o.id} className={`ticket${isDone ? ' ticket-done' : ''}`}>
             <div className="tickethead">
               <div>
                 <b>{o.location?.name_en}</b>
                 <span className={`tag ${o.order_type}`}>{o.order_type}</span>
                 {o.parent_order_id && <span className="tag amend">🔁 amendment</span>}
+                {isDone && <span className="tag st-completed">✓ completed</span>}
               </div>
               <span className="muted small">{new Date(o.created_at).toLocaleString()}</span>
             </div>
@@ -266,10 +279,19 @@ export default function KitchenPage() {
               })}
             </div>
             <div className="ticketfoot">
-              <button className="primary" disabled={!allHandled} onClick={() => completeOrder(o.id)}>
-                {allHandled ? 'Mark order complete' : `Handle all items (${handled}/${o.items.length})`}
-              </button>
-              <button className="ghost danger" onClick={() => cancelOrder(o.id)}>Cancel order</button>
+              {isDone ? (
+                <>
+                  <span className="muted small">✓ Completed {o.completed_at ? new Date(o.completed_at).toLocaleString() : ''}</span>
+                  <button className="ghost" onClick={() => reopenOrder(o.id)}>↩ Reopen</button>
+                </>
+              ) : (
+                <>
+                  <button className="primary" disabled={!allHandled} onClick={() => completeOrder(o.id)}>
+                    {allHandled ? 'Mark order complete' : `Handle all items (${handled}/${o.items.length})`}
+                  </button>
+                  <button className="ghost danger" onClick={() => cancelOrder(o.id)}>Cancel order</button>
+                </>
+              )}
             </div>
           </div>
         )

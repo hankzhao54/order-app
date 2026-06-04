@@ -31,9 +31,15 @@ export async function removeFavorite(catalogItemId) {
     .eq('user_id', u.user.id).eq('catalog_item_id', catalogItemId)
 }
 
-export async function submitOrder({ locationId, orderType, lines, adhoc }) {
+export async function submitOrder({ locationId, orderType, lines, adhoc, parentOrderId }) {
   const { data: order, error } = await supabase.from('orders')
-    .insert({ location_id: locationId, order_type: orderType, status: 'submitted', submitted_at: new Date().toISOString() })
+    .insert({
+      location_id: locationId,
+      order_type: parentOrderId ? 'urgent' : orderType,
+      status: 'submitted',
+      submitted_at: new Date().toISOString(),
+      parent_order_id: parentOrderId || null
+    })
     .select('id').single()
   if (error) throw error
   const rows = []
@@ -68,7 +74,7 @@ export async function saveTemplate(locationId, name, lines) {
 // ---- history (this location's past orders) ----
 export async function loadHistory(locationId) {
   const { data } = await supabase.from('orders')
-    .select('id,order_type,status,created_at,completed_at,items:order_items(id,item_name_snapshot,quantity,unit_snapshot,fulfillment_type,status)')
+    .select('id,order_type,status,created_at,completed_at,parent_order_id,items:order_items(id,item_name_snapshot,quantity,unit_snapshot,fulfillment_type,status)')
     .eq('location_id', locationId).order('created_at', { ascending: false }).limit(50)
   return data || []
 }

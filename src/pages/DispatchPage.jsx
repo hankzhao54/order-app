@@ -54,6 +54,33 @@ export default function DispatchPage() {
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => ids.includes(i.id) ? { ...i, dispatch_status: 'dispatched' } : i) })))
   }
 
+  function printSlip(locName, items) {
+    const rows = items
+      .filter(i => i.dispatch_status !== 'unavailable')
+      .map(i => {
+        const qty = i.dispatch_status === 'short' ? `${i.fulfilled_qty}/${i.quantity}` : i.quantity
+        const tag = i.fulfillment_type === 'purchase' ? '🛒' : '🍳'
+        return `<tr><td class="chk">☐</td><td>${tag} ${i.item_name_snapshot}</td><td class="q">${qty}${i.unit_snapshot ? ' ' + i.unit_snapshot : ''}</td></tr>`
+      }).join('')
+    const today = new Date().toLocaleDateString()
+    const w = window.open('', '_blank', 'width=420,height=640')
+    w.document.write(`<html><head><title>Delivery slip — ${locName}</title>
+      <style>
+        body{font-family:system-ui,Arial,sans-serif;padding:24px;color:#111}
+        h1{font-size:20px;margin:0 0 2px} .sub{color:#666;font-size:13px;margin-bottom:16px}
+        table{width:100%;border-collapse:collapse} td{padding:8px 6px;border-bottom:1px solid #ddd;font-size:15px}
+        .chk{width:28px;font-size:18px} .q{text-align:right;white-space:nowrap;font-weight:600}
+        .foot{margin-top:24px;font-size:13px;color:#666}
+      </style></head><body>
+      <h1>🚚 Delivery — ${locName}</h1>
+      <div class="sub">${today} · ${items.filter(i => i.dispatch_status !== 'unavailable').length} items</div>
+      <table>${rows}</table>
+      <div class="foot">Received by: ____________________  Signature: ____________________</div>
+      <script>window.onload=()=>{window.print()}</script>
+      </body></html>`)
+    w.document.close()
+  }
+
   // ---- week close (archive) ----
   const unfinished = useMemo(() => {
     let n = 0
@@ -113,6 +140,7 @@ export default function DispatchPage() {
                 <span className="cnt warn">⚠️ {loc.items.filter(i => i.dispatch_status === 'unavailable').length}</span>
                 <span className="cnt sent">📦 {loc.items.filter(i => i.dispatch_status === 'dispatched').length}</span>
               </div>
+              <button className="ghost" onClick={() => printSlip(loc.name, loc.items)}>🖨 Slip</button>
               {!isDriver && <button className="primary" disabled={!readyN} onClick={() => dispatchAllReady(loc.items)}>Dispatch {loc.name} ({readyN})</button>}
             </div>
             <div className="dcols">

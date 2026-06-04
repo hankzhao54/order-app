@@ -62,6 +62,34 @@ export default function HistoryPage() {
   }
   useEffect(() => { load() }, [tab, range, locFilter])
 
+  function exportCsv() {
+    const esc = v => {
+      const s = (v ?? '').toString()
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    let headers = [], records = []
+    if (tab === 'orders') {
+      headers = ['date', 'location', 'order_type', 'status', 'item', 'qty', 'unit', 'fulfillment']
+      for (const o of rows) for (const i of o.items)
+        records.push([fmtDate(o.created_at), o.location?.name_en || '', o.order_type, o.status, i.item_name_snapshot, i.quantity, i.unit_snapshot || '', i.fulfillment_type || ''])
+    } else if (tab === 'dispatch') {
+      headers = ['dispatched_date', 'location', 'item', 'qty', 'unit', 'fulfillment']
+      for (const r of rows)
+        records.push([fmtDate(r.dispatched_at), r.order?.location?.name_en || '', r.item_name_snapshot, r.quantity, r.unit_snapshot || '', r.fulfillment_type || ''])
+    } else {
+      headers = ['created_date', 'target_location', 'item', 'qty', 'unit', 'status']
+      for (const r of rows)
+        records.push([fmtDate(r.created_at), r.target?.name_en || '', r.item_name, r.quantity, r.unit || '', r.status])
+    }
+    const csv = [headers, ...records].map(row => row.map(esc).join(',')).join('\r\n')
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().slice(0, 10)
+    a.href = url; a.download = `${tab}_${stamp}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const weekLabel = `${fmtDate(weekStart)} – ${fmtDate(addDays(weekStart, 6))}`
 
   return (
@@ -93,9 +121,12 @@ export default function HistoryPage() {
         )}
       </div>
 
-      <div className="seg tabs2">
-        {['orders', 'dispatch', 'procurement'].map(t =>
-          <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>)}
+      <div className="hist-tabbar">
+        <div className="seg tabs2">
+          {['orders', 'dispatch', 'procurement'].map(t =>
+            <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>)}
+        </div>
+        <button className="ghost" disabled={!rows.length} onClick={exportCsv}>⬇ Export CSV</button>
       </div>
 
       {loading ? <div className="center muted">Loading…</div>
