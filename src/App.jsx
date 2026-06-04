@@ -11,6 +11,7 @@ import HistoryPage from './pages/HistoryPage'
 import CatalogAdmin from './pages/admin/CatalogAdmin'
 import LocationsAdmin from './pages/admin/LocationsAdmin'
 import UsersAdmin from './pages/admin/UsersAdmin'
+import SuppliersAdmin from './pages/admin/SuppliersAdmin'
 
 function Home() {
   const { role, user, loading } = useAuth()
@@ -46,6 +47,7 @@ export default function App() {
       <Route path="/kitchen" element={<RequireAuth allow={staff}><Layout><KitchenPage /></Layout></RequireAuth>} />
       <Route path="/admin/catalog" element={<RequireAuth allow={['admin']}><Layout><CatalogAdmin /></Layout></RequireAuth>} />
       <Route path="/admin/locations" element={<RequireAuth allow={['admin']}><Layout><LocationsAdmin /></Layout></RequireAuth>} />
+      <Route path="/admin/suppliers" element={<RequireAuth allow={['admin']}><Layout><SuppliersAdmin /></Layout></RequireAuth>} />
       <Route path="/admin/users" element={<RequireAuth allow={['admin']}><Layout><UsersAdmin /></Layout></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

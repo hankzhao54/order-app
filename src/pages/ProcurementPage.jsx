@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthProvider'
+import { useRealtimeReload } from '../lib/useRealtimeReload'
 
 const SELECT = `id,item_name,quantity,unit,status,note,unavail_reason,
-  target_location_id,target:locations(name_en),catalog_item_id,created_at,bought_at`
+  target_location_id,target:locations(name_en),catalog_item_id,source_order_item_id,created_at,bought_at`
 
 export default function ProcurementPage() {
   const { user, role } = useAuth()
@@ -32,11 +33,18 @@ export default function ProcurementPage() {
     setLoading(false)
   }
   useEffect(() => { load() }, [])
+  useRealtimeReload(['procurement_tasks'], load, editingNone !== null)
 
   function patch(id, fields) { setTasks(ts => ts.map(t => t.id === id ? { ...t, ...fields } : t)) }
 
   async function markBought(t) {
     await supabase.from('procurement_tasks').update({ status: 'bought', bought_by: user.id }).eq('id', t.id)
+    // if this task came from an order line, send that line back to the dispatch desk as "ready"
+    if (t.source_order_item_id) {
+      await supabase.from('order_items')
+        .update({ dispatch_status: 'ready', status: 'done', fulfilled_qty: t.quantity, handled_by: user.id })
+        .eq('id', t.source_order_item_id)
+    }
     patch(t.id, { status: 'bought' })
   }
   async function markUnavailable(t, reason) {

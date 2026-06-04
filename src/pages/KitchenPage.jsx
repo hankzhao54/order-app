@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { useRealtimeReload } from '../lib/useRealtimeReload'
 
 const SELECT = `id, order_type, status, created_at, parent_order_id,
   location:locations(name_en),
-  items:order_items(id, item_name_snapshot, unit_snapshot, quantity, fulfillment_type,
+  items:order_items(id, catalog_item_id, item_name_snapshot, unit_snapshot, quantity, fulfillment_type,
                     dispatch_status, fulfilled_qty, unavail_reason)`
 
 const REASONS = ['Out of stock', "Can't make in time", 'Temporarily unavailable']
@@ -14,6 +15,10 @@ export default function KitchenPage() {
   const [editing, setEditing] = useState(null)   // { itemId, mode: 'short'|'none'|'qty', qty }
   const [showCancelled, setShowCancelled] = useState(false)
   const [cancelled, setCancelled] = useState([])
+  const [view, setView] = useState('orders')      // orders | items
+  const [range, setRange] = useState('open')       // open | week
+  const [locations, setLocations] = useState([])
+  const [procureFor, setProcureFor] = useState(null)  // { item, order } awaiting target store
 
   async function load() {
     setLoading(true)
@@ -23,6 +28,9 @@ export default function KitchenPage() {
     setOrders(data || []); setLoading(false)
   }
   useEffect(() => { load() }, [])
+  useEffect(() => { supabase.from('locations').select('id,name_en,is_central').eq('is_active', true).order('name_en').then(({ data }) => setLocations(data || [])) }, [])
+  // auto-refresh on changes; pause while an inline editor is open
+  useRealtimeReload(['orders', 'order_items'], load, editing !== null || procureFor !== null)
 
   function patchItemLocal(itemId, fields) {
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => i.id === itemId ? { ...i, ...fields } : i) })))
@@ -66,21 +74,21 @@ export default function KitchenPage() {
     setOrders(os => os.filter(o => o.id !== orderId))
   }
 
-  async function sendToProcurement(item, order) {
+  async function sendToProcurement(item, order, targetLocId) {
     const { error } = await supabase.from('procurement_tasks').insert({
       item_name: item.item_name_snapshot,
-      catalog_item_id: null,
+      catalog_item_id: item.catalog_item_id || null,
       quantity: item.quantity,
       unit: item.unit_snapshot || null,
-      target_location_id: null,
+      target_location_id: targetLocId || null,
       source_order_item_id: item.id,
       note: `from ${order.location?.name_en || 'order'}`,
       created_by: (await supabase.auth.getUser()).data.user?.id
     })
     if (error) { alert(error.message); return }
-    // kitchen is done with this line — it now goes through the buy list
     await supabase.from('order_items').update({ dispatch_status: 'procuring', status: 'done' }).eq('id', item.id)
     patchItemLocal(item.id, { dispatch_status: 'procuring' })
+    setProcureFor(null)
   }
 
   async function saveQty(item, qty) {
@@ -118,15 +126,27 @@ export default function KitchenPage() {
 
   return (
     <div className="tickets">
-      <div className="toolbar">
+      <div className="toolbar kitchen-toolbar">
+        <div className="seg">
+          <button className={view === 'orders' ? 'on' : ''} onClick={() => setView('orders')}>By order</button>
+          <button className={view === 'items' ? 'on' : ''} onClick={() => setView('items')}>By item (production)</button>
+        </div>
+        {view === 'items' && (
+          <div className="seg">
+            <button className={range === 'open' ? 'on' : ''} onClick={() => setRange('open')}>All open</button>
+            <button className={range === 'week' ? 'on' : ''} onClick={() => setRange('week')}>This week</button>
+          </div>
+        )}
         <span className="muted">{orders.length} open order(s)</span>
         <button className="ghost" onClick={toggleCancelled}>
           {showCancelled ? 'Hide cancelled' : 'View cancelled'}
         </button>
       </div>
 
-      {orders.length === 0 && <div className="center muted">No open orders. 🎉</div>}
-      {orders.map(o => {
+      {view === 'items' && <ByItem orders={orders} range={range} onChanged={load} />}
+
+      {view === 'orders' && orders.length === 0 && <div className="center muted">No open orders. 🎉</div>}
+      {view === 'orders' && orders.map(o => {
         const handled = o.items.filter(i => i.dispatch_status !== 'pending').length
         const allHandled = o.items.length > 0 && handled === o.items.length
         const n = s => o.items.filter(i => i.dispatch_status === s).length
@@ -167,8 +187,19 @@ export default function KitchenPage() {
                     <div className="tline-tools">
                       <button className="linkbtn" onClick={() => setEditing({ itemId: i.id, mode: 'qty', qty: i.quantity })}>✏️ qty</button>
                       <button className="linkbtn" onClick={() => deleteItem(i)}>🗑 remove</button>
-                      <button className="linkbtn" onClick={() => sendToProcurement(i, o)}>📋 to buyer</button>
+                      <button className="linkbtn" onClick={() => setProcureFor({ itemId: i.id })}>📋 to buyer</button>
                     </div>
+                    {procureFor?.itemId === i.id && (
+                      <div className="inline-edit wrap">
+                        <span className="muted small">Buy & deliver to:</span>
+                        {locations.map(l => (
+                          <button key={l.id} className="mini" onClick={() => sendToProcurement(i, o, l.id)}>
+                            {l.name_en}{l.is_central ? ' (kitchen)' : ''}
+                          </button>
+                        ))}
+                        <button className="mini" onClick={() => setProcureFor(null)}>Cancel</button>
+                      </div>
+                    )}
 
                     {/* inline QTY editor (kitchen can correct the ordered amount) */}
                     {isEditing && editing.mode === 'qty' && (
@@ -266,6 +297,167 @@ export default function KitchenPage() {
               <button className="ghost full" onClick={() => restoreOrder(o.id)}>↩ Restore order</button>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- By-item production aggregation ----------
+function startOfWeek(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x}
+function inThisWeek(iso){const d=new Date(iso);const s=startOfWeek(new Date());const e=new Date(s);e.setDate(e.getDate()+7);return d>=s&&d<e}
+
+function ByItem({ orders, range, onChanged }) {
+  const scope = range === 'week' ? orders.filter(o => inThisWeek(o.created_at)) : orders
+
+  // aggregate
+  const groups = new Map()   // key -> {name, unit, type, total, byLoc:Map, itemIds:[], locItems:[]}
+  const adhoc = []
+  for (const o of scope) {
+    const loc = o.location?.name_en || '—'
+    for (const it of o.items) {
+      if (!it.catalog_item_id) { adhoc.push({ ...it, loc }); continue }
+      const key = it.catalog_item_id + '|' + (it.unit_snapshot || '')
+      if (!groups.has(key)) groups.set(key, { name: it.item_name_snapshot, unit: it.unit_snapshot || '', type: it.fulfillment_type, total: 0, byLoc: new Map(), itemIds: [], locItems: [] })
+      const g = groups.get(key)
+      g.total += Number(it.quantity) || 0
+      g.byLoc.set(loc, (g.byLoc.get(loc) || 0) + (Number(it.quantity) || 0))
+      g.itemIds.push(it.id)
+      g.locItems.push({ id: it.id, loc, qty: Number(it.quantity) || 0, status: it.dispatch_status })
+      if (!g.type && it.fulfillment_type) g.type = it.fulfillment_type
+    }
+  }
+  const all = [...groups.values()]
+  const make = all.filter(g => g.type === 'make')
+  const buy = all.filter(g => g.type === 'purchase')
+  const unsorted = all.filter(g => !g.type)
+
+  async function sendAllToBuyer() {
+    if (!buy.length) return
+    if (!confirm(`Send ${buy.length} purchase item(s) to the buyer's list?`)) return
+    const uid = (await supabase.auth.getUser()).data.user?.id
+    for (const g of buy) {
+      await supabase.from('procurement_tasks').insert({
+        item_name: g.name, quantity: g.total, unit: g.unit || null,
+        target_location_id: null, created_by: uid, note: 'from weekly production aggregate'
+      })
+      await supabase.from('order_items').update({ dispatch_status: 'procuring', status: 'done' }).in('id', g.itemIds)
+    }
+    onChanged()
+  }
+
+  // mark every store's line for this product as fully ready
+  async function markGroupReady(g) {
+    await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done' }).in('id', g.itemIds)
+    // ready means fulfilled = ordered qty; set per row to be exact
+    for (const li of g.locItems)
+      await supabase.from('order_items').update({ fulfilled_qty: li.qty }).eq('id', li.id)
+    onChanged()
+  }
+  // apply per-store actual quantities: full -> ready, less -> short
+  async function applyPartial(g, made) {   // made: { itemId: qty }
+    for (const li of g.locItems) {
+      const got = Number(made[li.id])
+      if (isNaN(got)) continue
+      if (got >= li.qty) await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done', fulfilled_qty: li.qty }).eq('id', li.id)
+      else await supabase.from('order_items').update({ dispatch_status: 'short', status: 'done', fulfilled_qty: got }).eq('id', li.id)
+    }
+    onChanged()
+  }
+
+  const Section = ({ title, rows, tag }) => (
+    <div className="prodsec">
+      <div className="prodsec-h">{title} <span className="muted">({rows.length})</span></div>
+      {rows.length === 0 && <p className="muted small pad">—</p>}
+      {rows.map((g, i) => (
+        <div className="prodrow" key={i}>
+          <div className="prodmain">
+            <span className="prodname">{g.name}</span>
+            <span className="prodtotal">{g.total}{g.unit ? ` ${g.unit}` : ''} {tag}</span>
+          </div>
+          <div className="prodbreak">
+            {[...g.byLoc.entries()].map(([loc, q]) => <span key={loc} className="brk">{loc}: <b>{q}</b></span>)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
+  if (scope.length === 0) return <div className="center muted">No orders in this range.</div>
+
+  return (
+    <div className="byitem">
+      <div className="byitem-bar no-print">
+        <span className="muted small">Production summary — {scope.length} order(s){range === 'week' ? ', this week' : ''}</span>
+        <div>
+          <button className="ghost" onClick={() => window.print()}>🖨 Print</button>
+          {buy.length > 0 && <button className="primary" onClick={sendAllToBuyer}>Send all 🛒 to buyer ({buy.length})</button>}
+        </div>
+      </div>
+      <MakeSection rows={make} onReady={markGroupReady} onPartial={applyPartial} />
+      <Section title="🛒 To buy" rows={buy} tag="🛒" />
+      {unsorted.length > 0 && <Section title="❓ Not sorted yet (set 🍳/🛒 in By order)" rows={unsorted} tag="" />}
+      {adhoc.length > 0 && (
+        <div className="prodsec">
+          <div className="prodsec-h">✎ Custom items (not merged) <span className="muted">({adhoc.length})</span></div>
+          {adhoc.map((a, i) => (
+            <div className="prodrow" key={i}>
+              <div className="prodmain"><span className="prodname">{a.item_name_snapshot}</span>
+                <span className="prodtotal">{a.quantity}{a.unit_snapshot ? ` ${a.unit_snapshot}` : ''}</span></div>
+              <div className="prodbreak"><span className="brk">{a.loc}</span></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MakeSection({ rows, onReady, onPartial }) {
+  return (
+    <div className="prodsec">
+      <div className="prodsec-h">🍳 To make <span className="muted">({rows.length})</span></div>
+      {rows.length === 0 && <p className="muted small pad">—</p>}
+      {rows.map((g, i) => <MakeRow key={i} g={g} onReady={onReady} onPartial={onPartial} />)}
+    </div>
+  )
+}
+
+function MakeRow({ g, onReady, onPartial }) {
+  const [open, setOpen] = useState(false)
+  const [made, setMade] = useState(() => Object.fromEntries(g.locItems.map(li => [li.id, li.qty])))
+  const allReady = g.locItems.every(li => li.status === 'ready')
+  const anyDone = g.locItems.some(li => ['ready', 'short', 'dispatched', 'procuring'].includes(li.status))
+
+  return (
+    <div className={`prodrow ${allReady ? 'rowdone' : ''}`}>
+      <div className="prodmain">
+        <span className="prodname">{g.name}{allReady && ' ✅'}</span>
+        <span className="prodtotal">{g.total}{g.unit ? ` ${g.unit}` : ''} 🍳</span>
+      </div>
+      <div className="prodbreak">
+        {g.locItems.map(li => (
+          <span key={li.id} className={`brk ${li.status === 'ready' ? 'bok' : li.status === 'short' ? 'bshort' : ''}`}>
+            {li.loc}: <b>{li.qty}</b>{li.status === 'short' ? ` (made ${'' }${li.fulfilled_qty ?? ''})` : ''}
+          </span>
+        ))}
+      </div>
+      <div className="prod-actions no-print">
+        <button className="mini ok" onClick={() => onReady(g)}>✓ All made</button>
+        <button className="mini warn" onClick={() => setOpen(o => !o)}>{open ? 'Close' : 'Partial…'}</button>
+      </div>
+      {open && (
+        <div className="partialbox">
+          <span className="muted small">Made per store (default = ordered):</span>
+          <div className="partialgrid">
+            {g.locItems.map(li => (
+              <label key={li.id} className="pcell">
+                <span>{li.loc} <span className="muted">/{li.qty}</span></span>
+                <input value={made[li.id]} onChange={e => setMade(m => ({ ...m, [li.id]: e.target.value }))} />
+              </label>
+            ))}
+          </div>
+          <button className="mini ok" onClick={() => { onPartial(g, made); setOpen(false) }}>Apply</button>
         </div>
       )}
     </div>

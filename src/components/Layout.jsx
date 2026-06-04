@@ -1,5 +1,20 @@
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../lib/AuthProvider'
+
+function ThemeToggle() {
+  const [dark, setDark] = useState(() =>
+    (typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark'))
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+    try { localStorage.setItem('theme', dark ? 'dark' : 'light') } catch {}
+  }, [dark])
+  return (
+    <button className="themebtn" title={dark ? 'Light mode' : 'Dark mode'} onClick={() => setDark(d => !d)}>
+      {dark ? '☀️' : '🌙'}
+    </button>
+  )
+}
 
 export default function Layout({ children }) {
   const { profile, role, isStaff, signOut } = useAuth()
@@ -19,11 +34,13 @@ export default function Layout({ children }) {
           <NavLink to="/history" className="navlink">History</NavLink>
           {role === 'admin' && <>
             <NavLink to="/admin/catalog" className="navlink">Catalog</NavLink>
+            <NavLink to="/admin/suppliers" className="navlink">Suppliers</NavLink>
             <NavLink to="/admin/locations" className="navlink">Locations</NavLink>
             <NavLink to="/admin/users" className="navlink">Users</NavLink>
           </>}
         </nav>
         <div className="who">
+          <ThemeToggle />
           <span className="muted">{profile?.full_name || role}</span>
           <button className="ghost" onClick={async () => { await signOut(); nav('/login') }}>Sign out</button>
         </div>
