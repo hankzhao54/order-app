@@ -68,8 +68,8 @@ export default function OrderingPage() {
 
   async function toggleFav(id) {
     const existing = favs.find(f => f.catalog_item_id === id)
-    if (existing) { await removeFavorite(existing.id); setFavs(p => p.filter(f => f.id !== existing.id)) }
-    else { const f = await addFavorite(locId, id, favs.length); if (f) setFavs(p => [...p, f]) }
+    if (existing) { await removeFavorite(id); setFavs(p => p.filter(f => f.catalog_item_id !== id)) }
+    else { const f = await addFavorite(id); if (f) setFavs(p => [...p, f]) }
   }
 
   async function doSubmit() {
@@ -156,7 +156,7 @@ export default function OrderingPage() {
                   </button>
                   {open.__fav && (
                     <div className="catitems">
-                      {favItems.length === 0 && <p className="muted pad">Tap ☆ on any item to pin it here for this location.</p>}
+                      {favItems.length === 0 && <p className="muted pad">Tap ☆ on any item to pin it to your favorites.</p>}
                       {favItems.map(({ it }) => <ItemRow key={it.id} it={it} />)}
                     </div>
                   )}

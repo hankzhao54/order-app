@@ -7,22 +7,28 @@ export async function loadCatalog(locationId) {
     supabase.from('catalog_items').select('id,name_en,name_hu,order_unit,category_id,default_fulfillment').eq('is_active', true).order('name_en')
   ])
   let favs = []
-  if (locationId) {
-    const { data } = await supabase.from('location_favorites')
-      .select('id,catalog_item_id,sort_order').eq('location_id', locationId).order('sort_order')
+  const { data: u } = await supabase.auth.getUser()
+  if (u?.user) {
+    const { data } = await supabase.from('user_favorites')
+      .select('catalog_item_id').eq('user_id', u.user.id)
     favs = data || []
   }
   return { cats: cats || [], items: items || [], favs }
 }
 
-export async function addFavorite(locationId, catalogItemId, sortOrder) {
-  const { data } = await supabase.from('location_favorites')
-    .insert({ location_id: locationId, catalog_item_id: catalogItemId, sort_order: sortOrder })
-    .select('id,catalog_item_id,sort_order').single()
+export async function addFavorite(catalogItemId) {
+  const { data: u } = await supabase.auth.getUser()
+  if (!u?.user) return null
+  const { data } = await supabase.from('user_favorites')
+    .insert({ user_id: u.user.id, catalog_item_id: catalogItemId })
+    .select('catalog_item_id').single()
   return data
 }
-export async function removeFavorite(favId) {
-  await supabase.from('location_favorites').delete().eq('id', favId)
+export async function removeFavorite(catalogItemId) {
+  const { data: u } = await supabase.auth.getUser()
+  if (!u?.user) return
+  await supabase.from('user_favorites').delete()
+    .eq('user_id', u.user.id).eq('catalog_item_id', catalogItemId)
 }
 
 export async function submitOrder({ locationId, orderType, lines, adhoc }) {

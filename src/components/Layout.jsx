@@ -26,6 +26,7 @@ export default function Layout({ children }) {
       <header className="topbar">
         <div className="brand">订货 · <span>Order</span></div>
         <nav className="nav">
+          {role === 'admin' && <NavLink to="/admin/dashboard" className="navlink">Dashboard</NavLink>}
           {(orderer || isStaff) &&
             <NavLink to="/order" className="navlink">Order</NavLink>}
           {isStaff && <NavLink to="/kitchen" className="navlink">Kitchen</NavLink>}

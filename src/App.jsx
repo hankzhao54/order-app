@@ -12,11 +12,12 @@ import CatalogAdmin from './pages/admin/CatalogAdmin'
 import LocationsAdmin from './pages/admin/LocationsAdmin'
 import UsersAdmin from './pages/admin/UsersAdmin'
 import SuppliersAdmin from './pages/admin/SuppliersAdmin'
+import Dashboard from './pages/admin/Dashboard'
 
 function Home() {
   const { role, user, loading } = useAuth()
   if (loading) return <div className="center muted">Loading…</div>
-  if (role === 'admin') return <Navigate to="/admin/catalog" replace />
+  if (role === 'admin') return <Navigate to="/admin/dashboard" replace />
   if (role === 'kitchen_manager') return <Navigate to="/kitchen" replace />
   if (role === 'driver') return <Navigate to="/dispatch" replace />
   if (role === 'restaurant_orderer') return <Navigate to="/order" replace />
@@ -45,6 +46,7 @@ export default function App() {
       <Route path="/procurement" element={<RequireAuth allow={buyers}><Layout><ProcurementPage /></Layout></RequireAuth>} />
       <Route path="/history" element={<RequireAuth allow={everyone}><Layout><HistoryPage /></Layout></RequireAuth>} />
       <Route path="/kitchen" element={<RequireAuth allow={staff}><Layout><KitchenPage /></Layout></RequireAuth>} />
+      <Route path="/admin/dashboard" element={<RequireAuth allow={['admin']}><Layout><Dashboard /></Layout></RequireAuth>} />
       <Route path="/admin/catalog" element={<RequireAuth allow={['admin']}><Layout><CatalogAdmin /></Layout></RequireAuth>} />
       <Route path="/admin/locations" element={<RequireAuth allow={['admin']}><Layout><LocationsAdmin /></Layout></RequireAuth>} />
       <Route path="/admin/suppliers" element={<RequireAuth allow={['admin']}><Layout><SuppliersAdmin /></Layout></RequireAuth>} />
