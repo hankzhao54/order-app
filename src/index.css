@@ -446,3 +446,101 @@ body{ font-size:var(--fs); }
 /* kitchen: completed ticket (review mode) */
 .ticket-done{opacity:.72}
 .tag.st-completed{background:var(--make-bg);color:var(--make)}
+
+/* toolbar right-aligned action group */
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ===== inventory / stocktake ===== */
+.inventory{display:flex;flex-direction:column;gap:6px}
+.invlist{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.invrow{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--card);
+  border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px 14px;box-shadow:var(--shadow-sm)}
+.invrow.has{border-color:var(--make-line)}
+.invinfo{display:flex;flex-direction:column}
+.invname{font-weight:600}
+.invstock{display:flex;align-items:center;gap:10px}
+.stockn{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:18px;min-width:54px;text-align:center;
+  cursor:pointer;padding:2px 8px;border-radius:8px}
+.stockn:hover{background:var(--raise)}
+.invrow.has .stockn{color:var(--make)}
+
+/* kitchen stock-first hint */
+.stockhint{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  background:var(--make-bg);color:var(--make);border:1px solid var(--make-line);border-radius:var(--radius-sm);
+  padding:8px 12px;margin-top:8px;font-size:13px}
+
+/* inventory spec fields */
+.invspec{display:flex;gap:6px;margin-top:5px}
+.invspec .cell{padding:5px 8px;border:1px solid var(--line);border-radius:7px;background:var(--field);font-size:12px}
+.invspec .cell.tiny{width:64px}
+
+/* inventory v2: bigger unit, per-unit weight, total */
+.invrow{flex-wrap:wrap;row-gap:8px}
+.invstock{display:flex;align-items:center;gap:8px}
+.iconbtn.big{width:38px;height:38px;font-size:20px;border-radius:10px;border:1px solid var(--line-2)}
+.stockn.big{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:26px;min-width:46px;text-align:center}
+.unitbox{width:70px;font-family:'Bricolage Grotesque',sans-serif;font-weight:700;font-size:16px;
+  padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--field);text-align:center}
+.invweight{display:flex;align-items:center;gap:14px;margin-left:auto}
+.perunit{display:flex;align-items:center;gap:5px}
+.perunit .wnum{width:64px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--field);text-align:right}
+.perunit .wsel{padding:7px 6px;border:1px solid var(--line);border-radius:8px;background:var(--field)}
+.totalw{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:22px;min-width:92px;text-align:right;color:var(--ember)}
+@media (max-width:560px){ .invweight{margin-left:0;width:100%;justify-content:space-between} }
+
+/* ===== inventory v3: stocktake workflow ===== */
+.inv-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.inv-prog{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:var(--ember)}
+.invgroup{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+.invgrouphd{display:flex;align-items:center;justify-content:space-between;padding:11px 15px;background:var(--raise);
+  font-family:'Bricolage Grotesque',sans-serif;font-weight:700;cursor:pointer;user-select:none}
+.invrow2{display:flex;align-items:center;gap:12px;padding:13px 15px;border-top:1px solid var(--line);cursor:pointer}
+.invrow2:active{background:var(--raise)}
+.invrow2.done{opacity:.62}
+.invrow2 .ck{width:20px;color:var(--make);font-weight:800;font-size:16px}
+.invrow2 .invinfo{flex:1;min-width:0}
+.invrow2 .invname{font-weight:600}
+.qbig{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:22px}
+.qbig small{font-size:13px;color:var(--muted);font-weight:600}
+.twt{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;color:var(--ember);min-width:72px;text-align:right}
+
+/* count overlay (mobile-first) */
+.cnt-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+.cnt-card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow-lg);padding:22px;width:100%;max-width:360px}
+.cnt-name{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:22px}
+.cnt-sub{font-size:13px;margin-bottom:16px}
+.cnt-row{display:flex;align-items:center;gap:12px;justify-content:center}
+.cnt-pm{width:60px;height:60px;border-radius:14px;border:1px solid var(--line-2,var(--line));background:var(--field);font-size:30px;cursor:pointer;color:var(--ink)}
+.cnt-pm:active{background:var(--raise)}
+.cnt-val{width:120px;height:60px;text-align:center;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:34px;
+  border:2px solid var(--ember);border-radius:14px;background:var(--field);color:var(--ink)}
+.cnt-quick{display:flex;gap:8px;justify-content:center;margin-top:14px}
+.cnt-quick button{flex:1;padding:10px 0;border:1px solid var(--line);border-radius:10px;background:var(--field);font-weight:600;cursor:pointer;color:var(--ink)}
+.cnt-quick button:active{background:var(--raise)}
+.cnt-meta{margin-top:14px}
+.cnt-loc{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--field)}
+.cnt-actions{display:flex;gap:10px;margin-top:18px}
+.cnt-actions .ghost{flex:1}.cnt-actions .primary{flex:2}
+.cnt-spec{display:flex;gap:8px;margin-top:8px}
+.cnt-spec input,.cnt-spec select{padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--field);min-width:0}
+.cnt-spec input:first-child{flex:2}.cnt-spec input:nth-child(2){flex:1}
+
+/* inventory multi-location extras */
+.locselect-inv{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;padding:8px 12px;border:1px solid var(--line-2,var(--line));border-radius:var(--radius-sm);background:var(--field);color:var(--ink)}
+.inv-loc{font-family:'Bricolage Grotesque',sans-serif;font-weight:700}
+.addpanel{margin-bottom:12px}
+.addchips{display:flex;flex-wrap:wrap;gap:6px}
+.addchip{cursor:pointer;border:1px dashed var(--line-2,var(--line))}
+.addchip:hover{border-color:var(--ember);color:var(--ember)}
+
+/* inventory overview */
+.ovwrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.ovtable{width:100%;border-collapse:collapse;font-size:14px;min-width:560px}
+.ovtable th,.ovtable td{padding:9px 12px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap}
+.ovtable th{color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;background:var(--raise)}
+.ovtable th:first-child,.ovtable td.ovname{text-align:left;position:sticky;left:0;background:var(--card)}
+.ovtable th:first-child{background:var(--raise)}
+.ovname{font-weight:600}
+.ovnum{font-family:'Bricolage Grotesque',sans-serif;font-weight:700}
+.ovnum.zero{color:var(--faint,var(--muted));opacity:.5}
+.ovtotal{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;color:var(--ember);text-align:right}

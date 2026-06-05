@@ -5,12 +5,12 @@ import { useRealtimeReload } from '../lib/useRealtimeReload'
 
 const SELECT = `id, order_type, status, created_at, parent_order_id,
   location_id, location:locations(name_en),
-  items:order_items(id, item_name_snapshot, unit_snapshot, quantity, fulfillment_type,
+  items:order_items(id, catalog_item_id, item_name_snapshot, unit_snapshot, quantity, fulfillment_type,
                     dispatch_status, fulfilled_qty, unavail_reason)`
 
 const REASONS = ['Out of stock', "Can't make", 'Not found']
 // terminal = ok to archive at week close
-const TERMINAL = ['dispatched', 'unavailable']
+const TERMINAL = ['dispatched', 'received', 'unavailable']
 
 export default function DispatchPage() {
   const { user, role } = useAuth()
@@ -43,15 +43,32 @@ export default function DispatchPage() {
     await supabase.from('order_items').update({ dispatch_status: 'unavailable', status: 'done', fulfilled_qty: 0, unavail_reason: reason, handled_by: user.id }).eq('id', item.id)
     patchLocal(item.id, { dispatch_status: 'unavailable', unavail_reason: reason }); setReasonFor(null)
   }
+  async function centralLoc() {
+    const { data } = await supabase.from('locations').select('id').eq('is_central', true).eq('is_active', true).limit(1).maybeSingle()
+    return data?.id || null
+  }
   async function dispatchItem(item) {
     await supabase.from('order_items').update({ dispatch_status: 'dispatched' }).eq('id', item.id)
     patchLocal(item.id, { dispatch_status: 'dispatched' })
+    if (item.catalog_item_id && item.fulfillment_type === 'make') {
+      const qty = Number(item.fulfilled_qty ?? item.quantity) || 0
+      const c = await centralLoc()
+      if (qty && c) await supabase.rpc('adjust_loc_stock', { p_loc: c, p_item: item.catalog_item_id, p_delta: -qty, p_reason: 'dispatched', p_note: null, p_order_item: item.id })
+    }
   }
   async function dispatchAllReady(locItems) {
-    const ids = locItems.filter(i => ['ready', 'short'].includes(i.dispatch_status)).map(i => i.id)
+    const ready = locItems.filter(i => ['ready', 'short'].includes(i.dispatch_status))
+    const ids = ready.map(i => i.id)
     if (!ids.length) return
     await supabase.from('order_items').update({ dispatch_status: 'dispatched' }).in('id', ids)
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => ids.includes(i.id) ? { ...i, dispatch_status: 'dispatched' } : i) })))
+    const c = await centralLoc()
+    for (const it of ready) {
+      if (c && it.catalog_item_id && it.fulfillment_type === 'make') {
+        const qty = Number(it.fulfilled_qty ?? it.quantity) || 0
+        if (qty) await supabase.rpc('adjust_loc_stock', { p_loc: c, p_item: it.catalog_item_id, p_delta: -qty, p_reason: 'dispatched', p_note: null, p_order_item: it.id })
+      }
+    }
   }
 
   function printSlip(locName, items) {
@@ -113,7 +130,10 @@ export default function DispatchPage() {
   return (
     <div className="dispatch">
       <div className="toolbar dispatch-bar">
-        <label className="inline"><input type="checkbox" checked={showDispatched} onChange={e => setShowDispatched(e.target.checked)} /> show already-dispatched</label>
+        <div className="seg">
+          <button className={!showDispatched ? 'on' : ''} onClick={() => setShowDispatched(false)}>Active</button>
+          <button className={showDispatched ? 'on' : ''} onClick={() => setShowDispatched(true)}>Dispatched</button>
+        </div>
         {isStaff && (
           <button className={`primary ${unfinished > 0 ? 'is-disabled' : ''}`} onClick={closeWeek} title={unfinished > 0 ? `${unfinished} item(s) unfinished` : ''}>
             🗓 Close week & archive{unfinished > 0 ? ` (${unfinished} left)` : ''}
@@ -155,7 +175,7 @@ export default function DispatchPage() {
 }
 
 function Column({ title, items, showDispatched, isDriver, isStaff, reasonFor, setReasonFor, markReady, markUnavailable, dispatchItem }) {
-  const visible = items.filter(i => showDispatched || i.dispatch_status !== 'dispatched')
+  const visible = items.filter(i => showDispatched || !['dispatched','received'].includes(i.dispatch_status))
   return (
     <div className="dcol">
       <div className="dcoltitle">{title} <span className="muted">({visible.length})</span></div>
@@ -173,6 +193,7 @@ function Column({ title, items, showDispatched, isDriver, isStaff, reasonFor, se
             </div>
             <div className="dactions">
               {i.dispatch_status === 'dispatched' && <span className="statuschip sent">📦 delivered</span>}
+              {i.dispatch_status === 'received' && <span className="statuschip ready">✓ received</span>}
               {i.dispatch_status === 'procuring' && (
                 <>
                   <span className="statuschip buy2">🛒 with buyer</span>

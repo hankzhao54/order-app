@@ -20,6 +20,8 @@ export default function KitchenPage() {
   const [showCompleted, setShowCompleted] = useState(false)
   const [locations, setLocations] = useState([])
   const [procureFor, setProcureFor] = useState(null)  // { item, order } awaiting target store
+  const [stock, setStock] = useState({})              // catalog_item_id -> qty
+  const [centralId, setCentralId] = useState(null)
 
   async function load() {
     setLoading(true)
@@ -30,6 +32,16 @@ export default function KitchenPage() {
   }
   useEffect(() => { load() }, [])
   useEffect(() => { supabase.from('locations').select('id,name_en,is_central').eq('is_active', true).order('name_en').then(({ data }) => setLocations(data || [])) }, [])
+  async function loadStock() {
+    const { data: central } = await supabase.from('locations').select('id').eq('is_central', true).eq('is_active', true).limit(1).maybeSingle()
+    if (!central) { setStock({}); return }
+    setCentralId(central.id)
+    const { data } = await supabase.from('location_stock')
+      .select('catalog_item_id, qty, item:catalog_items(stock_unit)').eq('location_id', central.id).gt('qty', 0)
+    const m = {}; for (const r of data || []) m[r.catalog_item_id] = { qty: Number(r.qty), unit: r.item?.stock_unit || '' }
+    setStock(m)
+  }
+  useEffect(() => { loadStock() }, [])
   // auto-refresh on changes; pause while an inline editor is open
   useRealtimeReload(['orders', 'order_items'], load, editing !== null || procureFor !== null)
 
@@ -47,16 +59,31 @@ export default function KitchenPage() {
     await supabase.from('order_items').update({ fulfillment_type: type }).eq('id', item.id)
     patchItemLocal(item.id, { fulfillment_type: type })
   }
+  async function fulfillFromStock(item, orderId) {
+    setEditing(null)
+    await ensureStarted(orderId)
+    await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, unavail_reason: null }).eq('id', item.id)
+    patchItemLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity, unavail_reason: null })
+    // fulfilled from existing stock: no production added; stock will be reduced on dispatch.
+    // reflect the reservation locally so the prompt updates
+    setStock(s => ({ ...s, [item.catalog_item_id]: { ...s[item.catalog_item_id], qty: Math.max(0, (s[item.catalog_item_id]?.qty || 0) - Number(item.quantity)) } }))
+  }
+  async function bumpStock(item, qty, reason) {
+    if (!item.catalog_item_id || item.fulfillment_type !== 'make' || !qty || !centralId) return
+    await supabase.rpc('adjust_loc_stock', { p_loc: centralId, p_item: item.catalog_item_id, p_delta: qty, p_reason: reason, p_note: null, p_order_item: item.id })
+  }
   async function setReady(item, orderId) {
     setEditing(null)
     await ensureStarted(orderId)
     await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, unavail_reason: null }).eq('id', item.id)
     patchItemLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity, unavail_reason: null })
+    bumpStock(item, Number(item.quantity), 'produced')
   }
   async function confirmShort(item, orderId, qty) {
     await ensureStarted(orderId)
     await supabase.from('order_items').update({ dispatch_status: 'short', status: 'done', fulfilled_qty: qty, unavail_reason: null }).eq('id', item.id)
     patchItemLocal(item.id, { dispatch_status: 'short', fulfilled_qty: qty, unavail_reason: null })
+    bumpStock(item, Number(qty), 'produced')
     setEditing(null)
   }
   async function confirmNone(item, orderId, reason) {
@@ -153,26 +180,26 @@ export default function KitchenPage() {
       <div className="toolbar kitchen-toolbar">
         <div className="seg">
           <button className={view === 'orders' ? 'on' : ''} onClick={() => setView('orders')}>By order</button>
-          <button className={view === 'items' ? 'on' : ''} onClick={() => setView('items')}>By item (production)</button>
+          <button className={view === 'items' ? 'on' : ''} onClick={() => setView('items')}>By item</button>
         </div>
-        {view === 'items' && (
+        {view === 'orders' ? (
+          <div className="seg">
+            <button className={!showCompleted ? 'on' : ''} onClick={() => setShowCompleted(false)}>Open</button>
+            <button className={showCompleted ? 'on' : ''} onClick={() => setShowCompleted(true)}>Completed</button>
+          </div>
+        ) : (
           <div className="seg">
             <button className={range === 'open' ? 'on' : ''} onClick={() => setRange('open')}>All open</button>
             <button className={range === 'week' ? 'on' : ''} onClick={() => setRange('week')}>This week</button>
           </div>
         )}
-        {view === 'orders' && (
-          <div className="seg">
-            <button className={!showCompleted ? 'on' : ''} onClick={() => setShowCompleted(false)}>Open</button>
-            <button className={showCompleted ? 'on' : ''} onClick={() => setShowCompleted(true)}>Completed</button>
-          </div>
-        )}
-        <span className="muted">{orders.filter(o => o.status !== 'completed').length} open order(s)</span>
-        {view === 'orders' && !showCompleted &&
-          <button className="primary" onClick={finishWeek}>🍳 Finish kitchen week</button>}
-        <button className="ghost" onClick={toggleCancelled}>
-          {showCancelled ? 'Hide cancelled' : 'View cancelled'}
-        </button>
+        <div className="tb-right">
+          {view === 'orders' && !showCompleted &&
+            <button className="primary" onClick={finishWeek}>🍳 Finish week</button>}
+          <button className="ghost" onClick={toggleCancelled}>
+            {showCancelled ? 'Hide cancelled' : 'View cancelled'}
+          </button>
+        </div>
       </div>
 
       {view === 'items' && <ByItem orders={orders.filter(o => o.status !== 'completed')} range={range} onChanged={load} />}
@@ -247,6 +274,17 @@ export default function KitchenPage() {
                         </div>
                         <button className="mini ok" onClick={() => saveQty(i, editing.qty)}>Save</button>
                         <button className="mini" onClick={() => setEditing(null)}>Cancel</button>
+                      </div>
+                    )}
+
+                    {/* stock-first hint */}
+                    {i.dispatch_status === 'pending' && !isEditing && i.fulfillment_type === 'make' && stock[i.catalog_item_id]?.qty > 0 && (
+                      <div className="stockhint">
+                        <span>📦 In stock: <b>{stock[i.catalog_item_id].qty}{stock[i.catalog_item_id].unit ? ` ${stock[i.catalog_item_id].unit}` : ''}</b>. {stock[i.catalog_item_id].qty >= i.quantity
+                          ? `Covers all ${i.quantity} — send from stock, no need to make.`
+                          : `Send ${stock[i.catalog_item_id].qty} from stock, make ${i.quantity - stock[i.catalog_item_id].qty} more.`}</span>
+                        {stock[i.catalog_item_id].qty >= i.quantity &&
+                          <button className="mini ok" onClick={() => fulfillFromStock(i, o.id)}>Use stock</button>}
                       </div>
                     )}
 
