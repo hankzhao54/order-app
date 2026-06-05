@@ -2,6 +2,26 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthProvider'
 
+const DAY = 86400000
+function expiryState(expires_on) {
+  if (!expires_on) return { cls: '', label: '' }
+  const days = Math.floor((new Date(expires_on + 'T00:00:00') - new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00')) / DAY)
+  if (days < 0) return { cls: 'expired', label: `expired ${-days}d ago` }
+  if (days === 0) return { cls: 'expsoon', label: 'today' }
+  if (days <= 7) return { cls: 'expsoon', label: `${days}d left` }
+  return { cls: '', label: `${days}d left` }
+}
+// earliest-expiring batch state for a row
+function rowExpiry(batches) {
+  let worst = { cls: '', label: '' }
+  for (const b of batches || []) {
+    const s = expiryState(b.expires_on)
+    if (s.cls === 'expired') return s
+    if (s.cls === 'expsoon') worst = s
+  }
+  return worst
+}
+
 const isLow = (qty, reorder) => {
   const q = Number(qty)
   const t = reorder == null || reorder === '' ? 1 : Number(reorder)
@@ -41,7 +61,7 @@ export default function InventoryPage() {
     (async () => {
       const [{ data: l }, { data: c }] = await Promise.all([
         supabase.from('locations').select('id,name_en,is_central').eq('is_active', true).order('is_central', { ascending: false }).order('name_en'),
-        supabase.from('catalog_items').select('id,name_en,name_hu,stock_unit,unit_weight,weight_unit,category:categories(name_en)')
+        supabase.from('catalog_items').select('id,name_en,name_hu,stock_unit,unit_weight,weight_unit,shelf_life_days,category:categories(name_en)')
           .eq('default_fulfillment', 'make').eq('is_active', true).order('name_en')
       ])
       setLocs(l || []); setCatalog(c || [])
@@ -57,19 +77,45 @@ export default function InventoryPage() {
   async function load() {
     if (!locId) return
     setLoading(true)
-    const { data } = await supabase.from('location_stock')
-      .select('catalog_item_id, qty, storage_location, reorder_level').eq('location_id', locId)
-    setRows(data || []); setLoading(false)
+    const [{ data: ls }, { data: batches }] = await Promise.all([
+      supabase.from('location_stock').select('catalog_item_id, qty, storage_location, reorder_level').eq('location_id', locId),
+      supabase.from('stock_batches').select('id, catalog_item_id, qty, produced_on, expires_on').eq('location_id', locId).gt('qty', 0).order('expires_on', { nullsFirst: false })
+    ])
+    const byItem = {}
+    for (const b of batches || []) (byItem[b.catalog_item_id] ||= []).push(b)
+    setRows((ls || []).map(r => ({ ...r, batches: byItem[r.catalog_item_id] || [] })))
+    setLoading(false)
   }
   useEffect(() => { load() }, [locId])
 
   // merge stock rows with catalog specs
   const items = useMemo(() => rows.map(r => ({
     ...catMap[r.catalog_item_id], id: r.catalog_item_id,
-    qty: Number(r.qty), storage_location: r.storage_location, reorder_level: r.reorder_level
+    qty: Number(r.qty), storage_location: r.storage_location, reorder_level: r.reorder_level,
+    batches: r.batches || []
   })).filter(i => i.name_en), [rows, catMap])
 
-  function openCount(item) { setEdit(item); setEditVal(String(item.qty)) }
+  function openCount(item) { setEdit(item); setEditVal('') }
+  async function addBatch(item, qty, produced) {
+    const n = Number(qty)
+    if (isNaN(n) || n <= 0) { setMsg('Enter a batch quantity.'); return }
+    const { error } = await supabase.rpc('add_batch', { p_loc: locId, p_item: item.id, p_qty: n, p_produced: produced || new Date().toISOString().slice(0, 10), p_expires: null, p_note: null })
+    if (error) { setMsg(error.message); return }
+    setCounted(c => ({ ...c, [item.id]: true })); setMsg(''); await load()
+    setEdit(e => e ? { ...e, batches: undefined } : e)  // force re-read from fresh items
+  }
+  async function editBatchQty(batch, newQty, itemId) {
+    const n = Number(newQty)
+    if (isNaN(n) || n < 0) return
+    await supabase.from('stock_batches').update({ qty: n }).eq('id', batch.id)
+    await supabase.rpc('sync_loc_qty', { p_loc: locId, p_item: itemId })
+    await load()
+  }
+  async function deleteBatch(batch, itemId) {
+    await supabase.from('stock_batches').delete().eq('id', batch.id)
+    await supabase.rpc('sync_loc_qty', { p_loc: locId, p_item: itemId })
+    await load()
+  }
   function nudge(d) { setEditVal(v => String(Math.max(0, (Number(v) || 0) + d))) }
   async function commitCount() {
     const val = Number(editVal)
@@ -138,15 +184,19 @@ export default function InventoryPage() {
         ? <Receiving canPickLoc={canPickLoc} locs={locs} myLoc={locationId} catMap={catMap} onReceived={load} />
         : topTab === 'overview' && canOverview
         ? <Overview locs={locs} catMap={catMap} />
-        : <Stocktake {...{ canPickLoc, locs, locId, setLocId, catalog, catMap, rows, setRows, loading, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted, counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, editVal, setEditVal, msg, setMsg, items, openCount, nudge, commitCount, saveLoc, addItem, removeItem, filtered, groups, addable, countedN, locName, inListIds }} />}
+        : <Stocktake {...{ canPickLoc, locs, locId, setLocId, catalog, catMap, rows, setRows, loading, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted, counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, msg, setMsg, items, openCount, saveLoc, addItem, removeItem, filtered, groups, addable, countedN, locName, inListIds, load, addBatch, editBatchQty, deleteBatch }} />}
     </div>
   )
 }
 
 function Stocktake(p) {
   const { canPickLoc, locs, locId, setLocId, catalog, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted,
-    counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, editVal, setEditVal, msg,
-    items, openCount, nudge, commitCount, saveLoc, addItem, removeItem, loading, groups, addable, countedN, locName } = p
+    counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, msg,
+    items, openCount, saveLoc, addItem, removeItem, loading, groups, addable, countedN, locName,
+    addBatch, editBatchQty, deleteBatch } = p
+  const live = edit ? (items.find(x => x.id === edit.id) || edit) : null
+  const [newQty, setNewQty] = useState('')
+  const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10))
   return (
     <>
       <div className="inv-top">
@@ -184,52 +234,80 @@ function Stocktake(p) {
               <span>{collapsed[g] ? '▸' : '▾'} 📍 {g}</span>
               <span className="muted small">{list.filter(i => counted[i.id]).length}/{list.length}</span>
             </div>
-            {!collapsed[g] && list.map(i => (
+            {!collapsed[g] && list.map(i => {
+              const ex = rowExpiry(i.batches)
+              return (
               <div key={i.id} className={`invrow2 ${counted[i.id] ? 'done' : ''} ${isLow(i.qty, i.reorder_level) ? 'low' : ''}`} onClick={() => openCount(i)}>
                 <span className="ck">{counted[i.id] ? '✓' : ''}</span>
                 <div className="invinfo">
-                  <span className="invname">{i.name_en}{isLow(i.qty, i.reorder_level) && <span className="lowtag">low</span>}</span>
+                  <span className="invname">{i.name_en}
+                    {isLow(i.qty, i.reorder_level) && <span className="lowtag">low</span>}
+                    {ex.cls === 'expired' && <span className="exptag expired">expired</span>}
+                    {ex.cls === 'expsoon' && <span className="exptag expsoon">{ex.label}</span>}
+                  </span>
                   <span className="muted small">{i.unit_weight ? `${i.unit_weight}${i.weight_unit || 'g'}/${i.stock_unit || 'unit'}` : (i.stock_unit || '')}</span>
                 </div>
                 <span className="qbig">{i.qty}<small>{i.stock_unit ? ` ${i.stock_unit}` : ''}</small></span>
                 <span className="twt">{fmtTotal(i.qty, i) || ''}</span>
               </div>
-            ))}
+            )})}
           </div>
         ))}
 
-      {edit && (
+      {live && (
         <div className="cnt-overlay" onClick={() => setEdit(null)}>
           <div className="cnt-card" onClick={e => e.stopPropagation()}>
-            <div className="cnt-name">{edit.name_en}</div>
-            <div className="cnt-sub muted">{locName} · {edit.storage_location || 'Unassigned'} · {edit.stock_unit || 'unit'}</div>
-            <div className="cnt-row">
-              <button className="cnt-pm" onClick={() => nudge(-1)}>−</button>
-              <input className="cnt-val" inputMode="decimal" value={editVal} onChange={e => setEditVal(e.target.value)} autoFocus />
-              <button className="cnt-pm" onClick={() => nudge(1)}>+</button>
+            <div className="cnt-name">{live.name_en}</div>
+            <div className="cnt-sub muted">{locName} · {live.storage_location || 'Unassigned'} · total {live.qty}{live.stock_unit ? ` ${live.stock_unit}` : ''}{live.shelf_life_days ? ` · shelf ${live.shelf_life_days}d` : ''}</div>
+
+            <div className="batchlist">
+              {(live.batches || []).length === 0 && <div className="muted small" style={{ padding: '6px 0' }}>No batches yet. Add one below.</div>}
+              {(live.batches || []).map(b => {
+                const st = expiryState(b.expires_on)
+                return (
+                  <div key={b.id} className={`batchrow ${st.cls}`}>
+                    <div className="batchinfo">
+                      <span className="batchmade">made {b.produced_on}</span>
+                      <span className={`batchexp ${st.cls}`}>{b.expires_on ? `exp ${b.expires_on}${st.label ? ` · ${st.label}` : ''}` : 'no expiry'}</span>
+                    </div>
+                    <input className="batchqty" inputMode="decimal" defaultValue={Number(b.qty)}
+                      onBlur={e => { if (Number(e.target.value) !== Number(b.qty)) editBatchQty(b, e.target.value, live.id) }} />
+                    <button className="mini danger" onClick={() => deleteBatch(b, live.id)}>✕</button>
+                  </div>
+                )
+              })}
             </div>
-            <div className="cnt-quick">{[-10, -5, +5, +10].map(d => <button key={d} onClick={() => nudge(d)}>{d > 0 ? `+${d}` : d}</button>)}</div>
+
+            <div className="addbatch">
+              <div className="addbatch-h">＋ Add batch</div>
+              <div className="addbatch-row">
+                <input className="bq" inputMode="decimal" placeholder="qty" value={newQty} onChange={e => setNewQty(e.target.value)} autoFocus />
+                <input className="bd" type="date" value={newDate} onChange={e => setNewDate(e.target.value)} />
+                <button className="primary" onClick={() => { addBatch(live, newQty, newDate); setNewQty('') }}>Add</button>
+              </div>
+              <div className="faint sm">Expiry auto-set from shelf life ({live.shelf_life_days ? `${live.shelf_life_days} days` : 'not set — edit in spec below'}).</div>
+            </div>
+
             <div className="cnt-meta">
-              <input className="cnt-loc" placeholder="storage location (this site)" defaultValue={edit.storage_location || ''}
-                onBlur={e => saveLoc(edit, e.target.value)} />
-              <input className="cnt-loc" style={{ marginTop: 8 }} placeholder="low-stock alert when ≤ (blank = ≤1)" inputMode="decimal" defaultValue={edit.reorder_level ?? ''}
-                onBlur={async e => { const v = e.target.value === '' ? null : Number(e.target.value); await supabase.from('location_stock').update({ reorder_level: v }).eq('location_id', locId).eq('catalog_item_id', edit.id); setRows(p => p.map(r => r.catalog_item_id === edit.id ? { ...r, reorder_level: v } : r)) }} />
+              <input className="cnt-loc" placeholder="storage location (this site)" defaultValue={live.storage_location || ''}
+                onBlur={e => saveLoc(live, e.target.value)} />
+              <input className="cnt-loc" style={{ marginTop: 8 }} placeholder="low-stock alert when ≤ (blank = ≤1)" inputMode="decimal" defaultValue={live.reorder_level ?? ''}
+                onBlur={async e => { const v = e.target.value === '' ? null : Number(e.target.value); await supabase.from('location_stock').update({ reorder_level: v }).eq('location_id', locId).eq('catalog_item_id', live.id) }} />
               <div className="cnt-spec">
-                <input placeholder="unit (bag…)" defaultValue={edit.stock_unit || ''}
-                  onBlur={async e => { await supabase.from('catalog_items').update({ stock_unit: e.target.value || null }).eq('id', edit.id) }} />
-                <input placeholder="wt" inputMode="decimal" defaultValue={edit.unit_weight ?? ''}
-                  onBlur={async e => { const v = e.target.value === '' ? null : Number(e.target.value); await supabase.from('catalog_items').update({ unit_weight: v }).eq('id', edit.id) }} />
-                <select defaultValue={edit.weight_unit || 'g'}
-                  onChange={async e => { await supabase.from('catalog_items').update({ weight_unit: e.target.value }).eq('id', edit.id) }}>
+                <input placeholder="unit (bag…)" defaultValue={live.stock_unit || ''}
+                  onBlur={async e => { await supabase.from('catalog_items').update({ stock_unit: e.target.value || null }).eq('id', live.id) }} />
+                <input placeholder="shelf days" inputMode="decimal" defaultValue={live.shelf_life_days ?? ''}
+                  onBlur={async e => { const v = e.target.value === '' ? null : Number(e.target.value); await supabase.from('catalog_items').update({ shelf_life_days: v }).eq('id', live.id) }} />
+                <select defaultValue={live.weight_unit || 'g'}
+                  onChange={async e => { await supabase.from('catalog_items').update({ weight_unit: e.target.value }).eq('id', live.id) }}>
                   <option value="g">g</option><option value="kg">kg</option>
                 </select>
               </div>
-              <div className="faint sm" style={{ marginTop: 4 }}>Unit & weight are shared across all sites.</div>
+              <div className="faint sm" style={{ marginTop: 4 }}>Unit & shelf life are shared across all sites.</div>
             </div>
             <div className="cnt-actions">
-              <button className="ghost danger" onClick={() => { removeItem(edit); setEdit(null) }}>Remove</button>
-              <button className="ghost" onClick={() => setEdit(null)}>Cancel</button>
-              <button className="primary" onClick={commitCount}>Save</button>
+              <button className="ghost danger" onClick={() => { removeItem(live); setEdit(null) }}>Remove item</button>
+              <button className="primary" onClick={() => setEdit(null)}>Done</button>
             </div>
           </div>
         </div>
@@ -348,7 +426,7 @@ function Receiving({ canPickLoc, locs, myLoc, catMap, onReceived }) {
     const qty = Number(item.fulfilled_qty ?? item.quantity) || 0
     await supabase.from('order_items').update({ dispatch_status: 'received' }).eq('id', item.id)
     if (item.catalog_item_id && qty) {
-      await supabase.rpc('adjust_loc_stock', { p_loc: locId, p_item: item.catalog_item_id, p_delta: qty, p_reason: 'received', p_note: null, p_order_item: item.id })
+      await supabase.rpc('add_batch', { p_loc: locId, p_item: item.catalog_item_id, p_qty: qty, p_produced: new Date().toISOString().slice(0,10), p_expires: null, p_note: 'received' })
     }
     setRows(p => p.filter(r => r.id !== item.id))
     onReceived && onReceived()

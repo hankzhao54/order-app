@@ -70,7 +70,7 @@ export default function KitchenPage() {
   }
   async function bumpStock(item, qty, reason) {
     if (!item.catalog_item_id || item.fulfillment_type !== 'make' || !qty || !centralId) return
-    await supabase.rpc('adjust_loc_stock', { p_loc: centralId, p_item: item.catalog_item_id, p_delta: qty, p_reason: reason, p_note: null, p_order_item: item.id })
+    await supabase.rpc('add_batch', { p_loc: centralId, p_item: item.catalog_item_id, p_qty: qty, p_produced: new Date().toISOString().slice(0, 10), p_expires: null, p_note: null })
   }
   async function setReady(item, orderId) {
     setEditing(null)

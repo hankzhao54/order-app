@@ -17,15 +17,16 @@ export default function Dashboard() {
         .order('created_at', { ascending: true }),
       supabase.from('locations').select('id,name_en,is_central').eq('is_active', true),
       supabase.from('procurement_tasks').select('id,status,item_name'),
-      supabase.from('location_stock').select('location_id, qty, reorder_level, item:catalog_items(name_en), loc:locations(name_en)')
+      supabase.from('location_stock').select('location_id, qty, reorder_level, item:catalog_items(name_en), loc:locations(name_en)'),
+      supabase.from('stock_batches').select('qty, expires_on, item:catalog_items(name_en), loc:locations(name_en)').gt('qty', 0).not('expires_on', 'is', null).order('expires_on')
     ])
-    setData({ orders: orders || [], locs: locs || [], tasks: tasks || [], lowStock: lowStock || [], weekStart })
+    setData({ orders: orders || [], locs: locs || [], tasks: tasks || [], lowStock: lowStock || [], batches: batches || [], weekStart })
   }
   useEffect(() => { load() }, [])
   useRealtimeReload(['orders', 'order_items', 'procurement_tasks'], load)
 
   if (!data) return <div className="center muted">Loading…</div>
-  const { orders, locs, tasks, lowStock } = data
+  const { orders, locs, tasks, lowStock, batches } = data
 
   const allItems = orders.flatMap(o => o.items)
   const pending = allItems.filter(i => i.dispatch_status === 'pending' || i.dispatch_status === 'procuring').length
@@ -52,6 +53,15 @@ export default function Dashboard() {
     return Number(r.qty) <= t
   }).map(r => ({ name: r.item?.name_en, loc: r.loc?.name_en, qty: Number(r.qty) })).filter(r => r.name)
 
+  // expiring / expired batches
+  const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00')
+  const expList = (batches || []).map(b => {
+    const days = Math.floor((new Date(b.expires_on + 'T00:00:00') - today) / 86400000)
+    return { name: b.item?.name_en, loc: b.loc?.name_en, qty: Number(b.qty), days }
+  }).filter(b => b.name && b.days <= 7).sort((a, b) => a.days - b.days)
+  const expiredList = expList.filter(b => b.days < 0)
+  const soonList = expList.filter(b => b.days >= 0)
+
   // per store
   const perStore = locs.filter(l => !l.is_central).map(l => {
     const os = orders.filter(o => o.location_id === l.id)
@@ -76,9 +86,23 @@ export default function Dashboard() {
         <Stat n={avgLabel} label="Avg completion time" />
       </div>
 
-      {(notOrdered.length > 0 || shortItems.length > 0 || lowList.length > 0) && (
+      {(notOrdered.length > 0 || shortItems.length > 0 || lowList.length > 0 || expList.length > 0) && (
         <div className="attention">
           <div className="att-h">⚠️ Needs attention</div>
+          {expiredList.length > 0 && (
+            <div className="att-block">
+              <b>Expired ({expiredList.length}):</b>{' '}
+              {expiredList.slice(0, 12).map((r, i) => <span key={i} className="chip bad">{r.name} · {r.loc} ({r.qty})</span>)}
+              {expiredList.length > 12 && <span className="muted small"> +{expiredList.length - 12} more</span>}
+            </div>
+          )}
+          {soonList.length > 0 && (
+            <div className="att-block">
+              <b>Expiring within 7 days ({soonList.length}):</b>{' '}
+              {soonList.slice(0, 12).map((r, i) => <span key={i} className="chip warn">{r.name} · {r.loc} ({r.days}d)</span>)}
+              {soonList.length > 12 && <span className="muted small"> +{soonList.length - 12} more</span>}
+            </div>
+          )}
           {notOrdered.length > 0 && (
             <div className="att-block">
               <b>Stores not ordered yet ({notOrdered.length}):</b>{' '}

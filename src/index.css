@@ -568,3 +568,26 @@ body{ font-size:var(--fs); }
 .lowtag{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;color:var(--bad);
   background:var(--paper);border:1px solid var(--bad);border-radius:999px;padding:1px 8px;vertical-align:middle}
 .ovnum.lowcell{color:var(--bad);font-weight:800;background:var(--bad-bg)}
+
+/* ===== batch manager (stocktake overlay) ===== */
+.batchlist{display:flex;flex-direction:column;gap:6px;margin:6px 0 12px;max-height:220px;overflow-y:auto}
+.batchrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--field)}
+.batchrow.expsoon{border-color:var(--warn-line);background:var(--warn-bg)}
+.batchrow.expired{border-color:var(--bad);background:var(--bad-bg)}
+.batchinfo{flex:1;display:flex;flex-direction:column;min-width:0}
+.batchmade{font-size:12px;color:var(--muted)}
+.batchexp{font-size:13px;font-weight:600}
+.batchexp.expsoon{color:var(--warn-ink)} .batchexp.expired{color:var(--bad)}
+.batchqty{width:64px;text-align:center;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:16px;
+  padding:6px;border:1px solid var(--line-2,var(--line));border-radius:8px;background:var(--card);color:var(--ink)}
+.addbatch{border-top:1px dashed var(--line);padding-top:12px;margin-bottom:6px}
+.addbatch-h{font-weight:700;margin-bottom:8px}
+.addbatch-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.addbatch-row .bq{width:70px;padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--field);text-align:center;color:var(--ink)}
+.addbatch-row .bd{flex:1;padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--field);color:var(--ink)}
+.exptag{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;vertical-align:middle}
+.exptag.expsoon{color:var(--warn-ink);background:var(--warn-bg);border:1px solid var(--warn-line)}
+.exptag.expired{color:var(--bad);background:var(--paper);border:1px solid var(--bad)}
+
+/* dashboard warn chip (expiring soon) */
+.chip.warn{background:var(--warn-bg);color:var(--warn-ink)}

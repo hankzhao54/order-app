@@ -53,7 +53,7 @@ export default function DispatchPage() {
     if (item.catalog_item_id && item.fulfillment_type === 'make') {
       const qty = Number(item.fulfilled_qty ?? item.quantity) || 0
       const c = await centralLoc()
-      if (qty && c) await supabase.rpc('adjust_loc_stock', { p_loc: c, p_item: item.catalog_item_id, p_delta: -qty, p_reason: 'dispatched', p_note: null, p_order_item: item.id })
+      if (qty && c) await supabase.rpc('consume_fifo', { p_loc: c, p_item: item.catalog_item_id, p_qty: qty, p_reason: 'dispatched', p_order_item: item.id })
     }
   }
   async function dispatchAllReady(locItems) {
@@ -66,7 +66,7 @@ export default function DispatchPage() {
     for (const it of ready) {
       if (c && it.catalog_item_id && it.fulfillment_type === 'make') {
         const qty = Number(it.fulfilled_qty ?? it.quantity) || 0
-        if (qty) await supabase.rpc('adjust_loc_stock', { p_loc: c, p_item: it.catalog_item_id, p_delta: -qty, p_reason: 'dispatched', p_note: null, p_order_item: it.id })
+        if (qty) await supabase.rpc('consume_fifo', { p_loc: c, p_item: it.catalog_item_id, p_qty: qty, p_reason: 'dispatched', p_order_item: it.id })
       }
     }
   }
