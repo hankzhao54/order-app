@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthProvider'
 
+const isLow = (qty, reorder) => {
+  const q = Number(qty)
+  const t = reorder == null || reorder === '' ? 1 : Number(reorder)
+  return q <= t
+}
+
 const fmtTotal = (qty, i) => {
   const w = Number(i.unit_weight)
   if (!w || !Number(qty)) return null
@@ -52,7 +58,7 @@ export default function InventoryPage() {
     if (!locId) return
     setLoading(true)
     const { data } = await supabase.from('location_stock')
-      .select('catalog_item_id, qty, storage_location').eq('location_id', locId)
+      .select('catalog_item_id, qty, storage_location, reorder_level').eq('location_id', locId)
     setRows(data || []); setLoading(false)
   }
   useEffect(() => { load() }, [locId])
@@ -60,7 +66,7 @@ export default function InventoryPage() {
   // merge stock rows with catalog specs
   const items = useMemo(() => rows.map(r => ({
     ...catMap[r.catalog_item_id], id: r.catalog_item_id,
-    qty: Number(r.qty), storage_location: r.storage_location
+    qty: Number(r.qty), storage_location: r.storage_location, reorder_level: r.reorder_level
   })).filter(i => i.name_en), [rows, catMap])
 
   function openCount(item) { setEdit(item); setEditVal(String(item.qty)) }
@@ -179,10 +185,10 @@ function Stocktake(p) {
               <span className="muted small">{list.filter(i => counted[i.id]).length}/{list.length}</span>
             </div>
             {!collapsed[g] && list.map(i => (
-              <div key={i.id} className={`invrow2 ${counted[i.id] ? 'done' : ''}`} onClick={() => openCount(i)}>
+              <div key={i.id} className={`invrow2 ${counted[i.id] ? 'done' : ''} ${isLow(i.qty, i.reorder_level) ? 'low' : ''}`} onClick={() => openCount(i)}>
                 <span className="ck">{counted[i.id] ? '✓' : ''}</span>
                 <div className="invinfo">
-                  <span className="invname">{i.name_en}</span>
+                  <span className="invname">{i.name_en}{isLow(i.qty, i.reorder_level) && <span className="lowtag">low</span>}</span>
                   <span className="muted small">{i.unit_weight ? `${i.unit_weight}${i.weight_unit || 'g'}/${i.stock_unit || 'unit'}` : (i.stock_unit || '')}</span>
                 </div>
                 <span className="qbig">{i.qty}<small>{i.stock_unit ? ` ${i.stock_unit}` : ''}</small></span>
@@ -206,6 +212,8 @@ function Stocktake(p) {
             <div className="cnt-meta">
               <input className="cnt-loc" placeholder="storage location (this site)" defaultValue={edit.storage_location || ''}
                 onBlur={e => saveLoc(edit, e.target.value)} />
+              <input className="cnt-loc" style={{ marginTop: 8 }} placeholder="low-stock alert when ≤ (blank = ≤1)" inputMode="decimal" defaultValue={edit.reorder_level ?? ''}
+                onBlur={async e => { const v = e.target.value === '' ? null : Number(e.target.value); await supabase.from('location_stock').update({ reorder_level: v }).eq('location_id', locId).eq('catalog_item_id', edit.id); setRows(p => p.map(r => r.catalog_item_id === edit.id ? { ...r, reorder_level: v } : r)) }} />
               <div className="cnt-spec">
                 <input placeholder="unit (bag…)" defaultValue={edit.stock_unit || ''}
                   onBlur={async e => { await supabase.from('catalog_items').update({ stock_unit: e.target.value || null }).eq('id', edit.id) }} />
@@ -234,7 +242,7 @@ function Overview({ locs, catMap }) {
   const [mode, setMode] = useState('item')   // item | site
   const [data, setData] = useState(null)
   useEffect(() => {
-    supabase.from('location_stock').select('location_id, catalog_item_id, qty').then(({ data }) => setData(data || []))
+    supabase.from('location_stock').select('location_id, catalog_item_id, qty, reorder_level').then(({ data }) => setData(data || []))
   }, [])
   if (!data) return <div className="center muted">Loading…</div>
 
@@ -243,12 +251,12 @@ function Overview({ locs, catMap }) {
 
   // by item: rows = items, cols = sites
   const byItem = () => {
-    const m = new Map()  // itemId -> {site: qty}
+    const m = new Map()  // itemId -> {site: {qty,reorder}}
     for (const r of data) {
       if (!m.has(r.catalog_item_id)) m.set(r.catalog_item_id, {})
-      m.get(r.catalog_item_id)[r.location_id] = Number(r.qty)
+      m.get(r.catalog_item_id)[r.location_id] = { qty: Number(r.qty), reorder: r.reorder_level }
     }
-    const rows = [...m.entries()].map(([id, bySite]) => ({ item: catMap[id], id, bySite, total: Object.values(bySite).reduce((a, b) => a + b, 0) }))
+    const rows = [...m.entries()].map(([id, bySite]) => ({ item: catMap[id], id, bySite, total: Object.values(bySite).reduce((a, b) => a + b.qty, 0) }))
       .filter(r => r.item).sort((a, b) => a.item.name_en.localeCompare(b.item.name_en))
     return (
       <div className="ovwrap">
@@ -258,7 +266,12 @@ function Overview({ locs, catMap }) {
             {rows.map(r => (
               <tr key={r.id}>
                 <td className="ovname">{r.item.name_en}{r.item.stock_unit ? <span className="faint sm"> {r.item.stock_unit}</span> : ''}</td>
-                {siteOrder.map(s => <td key={s.id} className={`ovnum ${r.bySite[s.id] > 0 ? '' : 'zero'}`}>{r.bySite[s.id] ?? '·'}</td>)}
+                {siteOrder.map(s => {
+                  const cell = r.bySite[s.id]
+                  if (!cell) return <td key={s.id} className="ovnum zero">·</td>
+                  const low = isLow(cell.qty, cell.reorder)
+                  return <td key={s.id} className={`ovnum ${cell.qty > 0 ? '' : 'zero'} ${low ? 'lowcell' : ''}`}>{cell.qty}{low ? ' ⚠' : ''}</td>
+                })}
                 <td className="ovtotal">{r.total}{r.item.unit_weight ? <span className="faint sm"> · {fmt(r.total, r.item)}</span> : ''}</td>
               </tr>
             ))}

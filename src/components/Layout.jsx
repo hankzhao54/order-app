@@ -19,14 +19,16 @@ function ThemeToggle() {
 export default function Layout({ children }) {
   const { profile, role, isStaff, signOut } = useAuth()
   const nav = useNavigate()
+  const [menuOpen, setMenuOpen] = useState(false)
   const orderer = role === 'restaurant_orderer'
   const storeMgr = role === 'store_manager'
   const driver = role === 'driver'
   return (
     <div className="app">
       <header className="topbar">
+        <button className="navtoggle" aria-label="Menu" onClick={() => setMenuOpen(o => !o)}>☰</button>
         <div className="brand">订货 · <span>Order</span></div>
-        <nav className="nav">
+        <nav className={`nav${menuOpen ? ' open' : ''}`} onClick={() => setMenuOpen(false)}>
           {role === 'admin' && <NavLink to="/admin/dashboard" className="navlink">Dashboard</NavLink>}
           {(orderer || storeMgr || isStaff) &&
             <NavLink to="/order" className="navlink">Order</NavLink>}

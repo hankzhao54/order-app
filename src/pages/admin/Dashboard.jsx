@@ -10,21 +10,22 @@ export default function Dashboard() {
 
   async function load() {
     const weekStart = startOfWeek(new Date()).toISOString()
-    const [{ data: orders }, { data: locs }, { data: tasks }] = await Promise.all([
+    const [{ data: orders }, { data: locs }, { data: tasks }, { data: lowStock }] = await Promise.all([
       supabase.from('orders')
         .select('id,location_id,status,created_at,completed_at,location:locations(name_en),items:order_items(id,item_name_snapshot,dispatch_status,quantity,unit_snapshot)')
         .in('status', ['submitted', 'in_progress', 'completed'])
         .order('created_at', { ascending: true }),
       supabase.from('locations').select('id,name_en,is_central').eq('is_active', true),
-      supabase.from('procurement_tasks').select('id,status,item_name')
+      supabase.from('procurement_tasks').select('id,status,item_name'),
+      supabase.from('location_stock').select('location_id, qty, reorder_level, item:catalog_items(name_en), loc:locations(name_en)')
     ])
-    setData({ orders: orders || [], locs: locs || [], tasks: tasks || [], weekStart })
+    setData({ orders: orders || [], locs: locs || [], tasks: tasks || [], lowStock: lowStock || [], weekStart })
   }
   useEffect(() => { load() }, [])
   useRealtimeReload(['orders', 'order_items', 'procurement_tasks'], load)
 
   if (!data) return <div className="center muted">Loading…</div>
-  const { orders, locs, tasks } = data
+  const { orders, locs, tasks, lowStock } = data
 
   const allItems = orders.flatMap(o => o.items)
   const pending = allItems.filter(i => i.dispatch_status === 'pending' || i.dispatch_status === 'procuring').length
@@ -44,6 +45,12 @@ export default function Dashboard() {
   // stores that haven't ordered this week (non-central)
   const orderedLocIds = new Set(orders.map(o => o.location_id))
   const notOrdered = locs.filter(l => !l.is_central && !orderedLocIds.has(l.id))
+
+  // low stock across all locations (qty <= reorder_level, or <=1 when no level set)
+  const lowList = (lowStock || []).filter(r => {
+    const t = r.reorder_level == null ? 1 : Number(r.reorder_level)
+    return Number(r.qty) <= t
+  }).map(r => ({ name: r.item?.name_en, loc: r.loc?.name_en, qty: Number(r.qty) })).filter(r => r.name)
 
   // per store
   const perStore = locs.filter(l => !l.is_central).map(l => {
@@ -69,13 +76,20 @@ export default function Dashboard() {
         <Stat n={avgLabel} label="Avg completion time" />
       </div>
 
-      {(notOrdered.length > 0 || shortItems.length > 0) && (
+      {(notOrdered.length > 0 || shortItems.length > 0 || lowList.length > 0) && (
         <div className="attention">
           <div className="att-h">⚠️ Needs attention</div>
           {notOrdered.length > 0 && (
             <div className="att-block">
               <b>Stores not ordered yet ({notOrdered.length}):</b>{' '}
               {notOrdered.map(l => <span key={l.id} className="chip">{l.name_en}</span>)}
+            </div>
+          )}
+          {lowList.length > 0 && (
+            <div className="att-block">
+              <b>Low stock ({lowList.length}):</b>{' '}
+              {lowList.slice(0, 12).map((r, i) => <span key={i} className="chip bad">{r.name} · {r.loc} ({r.qty})</span>)}
+              {lowList.length > 12 && <span className="muted small"> +{lowList.length - 12} more</span>}
             </div>
           )}
           {shortItems.length > 0 && (
