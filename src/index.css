@@ -544,3 +544,7 @@ body{ font-size:var(--fs); }
 .ovnum{font-family:'Bricolage Grotesque',sans-serif;font-weight:700}
 .ovnum.zero{color:var(--faint,var(--muted));opacity:.5}
 .ovtotal{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;color:var(--ember);text-align:right}
+
+/* users admin extras */
+.row-disabled{opacity:.5}
+.user-actions{display:flex;gap:6px;white-space:nowrap}

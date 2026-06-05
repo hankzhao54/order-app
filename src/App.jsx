@@ -21,7 +21,7 @@ function Home() {
   if (role === 'admin') return <Navigate to="/admin/dashboard" replace />
   if (role === 'kitchen_manager') return <Navigate to="/kitchen" replace />
   if (role === 'driver') return <Navigate to="/dispatch" replace />
-  if (role === 'restaurant_orderer') return <Navigate to="/order" replace />
+  if (role === 'restaurant_orderer' || role === 'store_manager') return <Navigate to="/order" replace />
   // Signed in but no ordering role yet -> don't bounce between routes.
   return (
     <div className="center muted">
@@ -33,9 +33,9 @@ function Home() {
 
 const staff = ['kitchen_manager', 'admin']
 const dispatchers = ['kitchen_manager', 'admin', 'driver']
-const buyers = ['restaurant_orderer', 'kitchen_manager', 'admin', 'driver']
-const everyone = ['restaurant_orderer', 'kitchen_manager', 'admin', 'driver']
-const orderers = ['restaurant_orderer', 'kitchen_manager', 'admin']
+const buyers = ['restaurant_orderer', 'store_manager', 'kitchen_manager', 'admin', 'driver']
+const everyone = ['restaurant_orderer', 'store_manager', 'kitchen_manager', 'admin', 'driver']
+const orderers = ['restaurant_orderer', 'store_manager', 'kitchen_manager', 'admin']
 
 export default function App() {
   return (
@@ -46,7 +46,7 @@ export default function App() {
       <Route path="/dispatch" element={<RequireAuth allow={dispatchers}><Layout><DispatchPage /></Layout></RequireAuth>} />
       <Route path="/procurement" element={<RequireAuth allow={buyers}><Layout><ProcurementPage /></Layout></RequireAuth>} />
       <Route path="/history" element={<RequireAuth allow={everyone}><Layout><HistoryPage /></Layout></RequireAuth>} />
-      <Route path="/inventory" element={<RequireAuth allow={['kitchen_manager','admin']}><Layout><InventoryPage /></Layout></RequireAuth>} />
+      <Route path="/inventory" element={<RequireAuth allow={['kitchen_manager','admin','store_manager']}><Layout><InventoryPage /></Layout></RequireAuth>} />
       <Route path="/kitchen" element={<RequireAuth allow={staff}><Layout><KitchenPage /></Layout></RequireAuth>} />
       <Route path="/admin/dashboard" element={<RequireAuth allow={['admin']}><Layout><Dashboard /></Layout></RequireAuth>} />
       <Route path="/admin/catalog" element={<RequireAuth allow={['admin']}><Layout><CatalogAdmin /></Layout></RequireAuth>} />

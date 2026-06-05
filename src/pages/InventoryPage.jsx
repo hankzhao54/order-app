@@ -117,19 +117,19 @@ export default function InventoryPage() {
     <div className="inventory">
       {canOverview && (
         <div className="seg" style={{ marginBottom: 12 }}>
-          <button className={topTab === 'count' ? 'on' : ''} onClick={() => setTopTab('count')}>Stocktake</button>
+          <button className={topTab === 'count' ? 'on' : ''} onClick={() => { setTopTab('count'); load() }}>Stocktake</button>
           <button className={topTab === 'overview' ? 'on' : ''} onClick={() => setTopTab('overview')}>Overview</button>
           <button className={topTab === 'receiving' ? 'on' : ''} onClick={() => setTopTab('receiving')}>Receiving</button>
         </div>
       )}
       {!canOverview && (
         <div className="seg" style={{ marginBottom: 12 }}>
-          <button className={topTab === 'count' ? 'on' : ''} onClick={() => setTopTab('count')}>Stocktake</button>
+          <button className={topTab === 'count' ? 'on' : ''} onClick={() => { setTopTab('count'); load() }}>Stocktake</button>
           <button className={topTab === 'receiving' ? 'on' : ''} onClick={() => setTopTab('receiving')}>Receiving</button>
         </div>
       )}
       {topTab === 'receiving'
-        ? <Receiving canPickLoc={canPickLoc} locs={locs} myLoc={locationId} catMap={catMap} onReceived={() => { if (topTab === 'count') load() }} />
+        ? <Receiving canPickLoc={canPickLoc} locs={locs} myLoc={locationId} catMap={catMap} onReceived={load} />
         : topTab === 'overview' && canOverview
         ? <Overview locs={locs} catMap={catMap} />
         : <Stocktake {...{ canPickLoc, locs, locId, setLocId, catalog, catMap, rows, setRows, loading, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted, counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, editVal, setEditVal, msg, setMsg, items, openCount, nudge, commitCount, saveLoc, addItem, removeItem, filtered, groups, addable, countedN, locName, inListIds }} />}

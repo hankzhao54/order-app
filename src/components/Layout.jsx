@@ -20,6 +20,7 @@ export default function Layout({ children }) {
   const { profile, role, isStaff, signOut } = useAuth()
   const nav = useNavigate()
   const orderer = role === 'restaurant_orderer'
+  const storeMgr = role === 'store_manager'
   const driver = role === 'driver'
   return (
     <div className="app">
@@ -27,12 +28,12 @@ export default function Layout({ children }) {
         <div className="brand">订货 · <span>Order</span></div>
         <nav className="nav">
           {role === 'admin' && <NavLink to="/admin/dashboard" className="navlink">Dashboard</NavLink>}
-          {(orderer || isStaff) &&
+          {(orderer || storeMgr || isStaff) &&
             <NavLink to="/order" className="navlink">Order</NavLink>}
           {isStaff && <NavLink to="/kitchen" className="navlink">Kitchen</NavLink>}
-          {isStaff && <NavLink to="/inventory" className="navlink">Inventory</NavLink>}
+          {(isStaff || storeMgr) && <NavLink to="/inventory" className="navlink">Inventory</NavLink>}
           {(isStaff || driver) && <NavLink to="/dispatch" className="navlink">Dispatch</NavLink>}
-          {(orderer || isStaff || driver) && <NavLink to="/procurement" className="navlink">Procurement</NavLink>}
+          {(orderer || storeMgr || isStaff || driver) && <NavLink to="/procurement" className="navlink">Procurement</NavLink>}
           <NavLink to="/history" className="navlink">History</NavLink>
           {role === 'admin' && <>
             <NavLink to="/admin/catalog" className="navlink">Catalog</NavLink>
