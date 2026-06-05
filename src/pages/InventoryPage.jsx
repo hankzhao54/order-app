@@ -61,7 +61,7 @@ export default function InventoryPage() {
     (async () => {
       const [{ data: l }, { data: c }] = await Promise.all([
         supabase.from('locations').select('id,name_en,is_central').eq('is_active', true).order('is_central', { ascending: false }).order('name_en'),
-        supabase.from('catalog_items').select('id,name_en,name_hu,stock_unit,unit_weight,weight_unit,shelf_life_days,category:categories(name_en)')
+        supabase.from('catalog_items').select('id,name_en,name_hu,stock_unit,unit_weight,weight_unit,shelf_life_days,storage_location,reorder_level,category:categories(name_en)')
           .eq('default_fulfillment', 'make').eq('is_active', true).order('name_en')
       ])
       setLocs(l || []); setCatalog(c || [])
@@ -91,7 +91,9 @@ export default function InventoryPage() {
   // merge stock rows with catalog specs
   const items = useMemo(() => rows.map(r => ({
     ...catMap[r.catalog_item_id], id: r.catalog_item_id,
-    qty: Number(r.qty), storage_location: r.storage_location, reorder_level: r.reorder_level,
+    qty: Number(r.qty),
+    storage_location: catMap[r.catalog_item_id]?.storage_location || null,
+    reorder_level: catMap[r.catalog_item_id]?.reorder_level,
     batches: r.batches || []
   })).filter(i => i.name_en), [rows, catMap])
 
@@ -174,7 +176,7 @@ export default function InventoryPage() {
           <button className={topTab === 'receiving' ? 'on' : ''} onClick={() => setTopTab('receiving')}>Receiving</button>
         </div>
       )}
-      {!canOverview && (
+      {!canOverview && role !== 'bar_staff' && (
         <div className="seg" style={{ marginBottom: 12 }}>
           <button className={topTab === 'count' ? 'on' : ''} onClick={() => { setTopTab('count'); load() }}>Stocktake</button>
           <button className={topTab === 'receiving' ? 'on' : ''} onClick={() => setTopTab('receiving')}>Receiving</button>
@@ -285,25 +287,9 @@ function Stocktake(p) {
                 <input className="bd" type="date" value={newDate} onChange={e => setNewDate(e.target.value)} />
                 <button className="primary" onClick={() => { addBatch(live, newQty, newDate); setNewQty('') }}>Add</button>
               </div>
-              <div className="faint sm">Expiry auto-set from shelf life ({live.shelf_life_days ? `${live.shelf_life_days} days` : 'not set — edit in spec below'}).</div>
-            </div>
-
-            <div className="cnt-meta">
-              <input className="cnt-loc" placeholder="storage location (this site)" defaultValue={live.storage_location || ''}
-                onBlur={e => saveLoc(live, e.target.value)} />
-              <input className="cnt-loc" style={{ marginTop: 8 }} placeholder="low-stock alert when ≤ (blank = ≤1)" inputMode="decimal" defaultValue={live.reorder_level ?? ''}
-                onBlur={async e => { const v = e.target.value === '' ? null : Number(e.target.value); await supabase.from('location_stock').update({ reorder_level: v }).eq('location_id', locId).eq('catalog_item_id', live.id) }} />
-              <div className="cnt-spec">
-                <input placeholder="unit (bag…)" defaultValue={live.stock_unit || ''}
-                  onBlur={async e => { await supabase.from('catalog_items').update({ stock_unit: e.target.value || null }).eq('id', live.id) }} />
-                <input placeholder="shelf days" inputMode="decimal" defaultValue={live.shelf_life_days ?? ''}
-                  onBlur={async e => { const v = e.target.value === '' ? null : Number(e.target.value); await supabase.from('catalog_items').update({ shelf_life_days: v }).eq('id', live.id) }} />
-                <select defaultValue={live.weight_unit || 'g'}
-                  onChange={async e => { await supabase.from('catalog_items').update({ weight_unit: e.target.value }).eq('id', live.id) }}>
-                  <option value="g">g</option><option value="kg">kg</option>
-                </select>
-              </div>
-              <div className="faint sm" style={{ marginTop: 4 }}>Unit & shelf life are shared across all sites.</div>
+              <div className="faint sm">{live.shelf_life_days
+                ? `Expiry auto-set: +${live.shelf_life_days} days from made date.`
+                : 'No shelf life set — set it in Catalog → Items → Shelf (d).'}</div>
             </div>
             <div className="cnt-actions">
               <button className="ghost danger" onClick={() => { removeItem(live); setEdit(null) }}>Remove item</button>
@@ -347,7 +333,7 @@ function Overview({ locs, catMap }) {
                 {siteOrder.map(s => {
                   const cell = r.bySite[s.id]
                   if (!cell) return <td key={s.id} className="ovnum zero">·</td>
-                  const low = isLow(cell.qty, cell.reorder)
+                  const low = isLow(cell.qty, r.item.reorder_level)
                   return <td key={s.id} className={`ovnum ${cell.qty > 0 ? '' : 'zero'} ${low ? 'lowcell' : ''}`}>{cell.qty}{low ? ' ⚠' : ''}</td>
                 })}
                 <td className="ovtotal">{r.total}{r.item.unit_weight ? <span className="faint sm"> · {fmt(r.total, r.item)}</span> : ''}</td>

@@ -22,6 +22,7 @@ export default function Layout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const orderer = role === 'restaurant_orderer'
   const storeMgr = role === 'store_manager'
+  const barStaff = role === 'bar_staff'
   const driver = role === 'driver'
   return (
     <div className="app">
@@ -33,7 +34,7 @@ export default function Layout({ children }) {
           {(orderer || storeMgr || isStaff) &&
             <NavLink to="/order" className="navlink">Order</NavLink>}
           {isStaff && <NavLink to="/kitchen" className="navlink">Kitchen</NavLink>}
-          {(isStaff || storeMgr) && <NavLink to="/inventory" className="navlink">Inventory</NavLink>}
+          {(isStaff || storeMgr || barStaff) && <NavLink to="/inventory" className="navlink">Inventory</NavLink>}
           {(isStaff || driver) && <NavLink to="/dispatch" className="navlink">Dispatch</NavLink>}
           {(orderer || storeMgr || isStaff || driver) && <NavLink to="/procurement" className="navlink">Procurement</NavLink>}
           <NavLink to="/history" className="navlink">History</NavLink>

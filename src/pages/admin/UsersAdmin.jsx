@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 
-const ROLES = ['restaurant_orderer', 'store_manager', 'kitchen_manager', 'driver', 'admin']
+const ROLES = ['restaurant_orderer', 'store_manager', 'bar_staff', 'kitchen_manager', 'driver', 'admin']
 const ROLE_LABEL = {
   restaurant_orderer: 'Orderer (store)',
   store_manager: 'Store manager',
   kitchen_manager: 'Kitchen manager',
+  bar_staff: 'Bar staff',
   driver: 'Driver',
   admin: 'Admin',
 }
-const STORE_BOUND = ['restaurant_orderer', 'store_manager']
+const STORE_BOUND = ['restaurant_orderer', 'store_manager', 'bar_staff']
 
 export default function UsersAdmin() {
   const [rows, setRows] = useState([])

@@ -21,6 +21,7 @@ function Home() {
   if (role === 'admin') return <Navigate to="/admin/dashboard" replace />
   if (role === 'kitchen_manager') return <Navigate to="/kitchen" replace />
   if (role === 'driver') return <Navigate to="/dispatch" replace />
+  if (role === 'bar_staff') return <Navigate to="/inventory" replace />
   if (role === 'restaurant_orderer' || role === 'store_manager') return <Navigate to="/order" replace />
   // Signed in but no ordering role yet -> don't bounce between routes.
   return (
@@ -46,7 +47,7 @@ export default function App() {
       <Route path="/dispatch" element={<RequireAuth allow={dispatchers}><Layout><DispatchPage /></Layout></RequireAuth>} />
       <Route path="/procurement" element={<RequireAuth allow={buyers}><Layout><ProcurementPage /></Layout></RequireAuth>} />
       <Route path="/history" element={<RequireAuth allow={everyone}><Layout><HistoryPage /></Layout></RequireAuth>} />
-      <Route path="/inventory" element={<RequireAuth allow={['kitchen_manager','admin','store_manager']}><Layout><InventoryPage /></Layout></RequireAuth>} />
+      <Route path="/inventory" element={<RequireAuth allow={['kitchen_manager','admin','store_manager','bar_staff']}><Layout><InventoryPage /></Layout></RequireAuth>} />
       <Route path="/kitchen" element={<RequireAuth allow={staff}><Layout><KitchenPage /></Layout></RequireAuth>} />
       <Route path="/admin/dashboard" element={<RequireAuth allow={['admin']}><Layout><Dashboard /></Layout></RequireAuth>} />
       <Route path="/admin/catalog" element={<RequireAuth allow={['admin']}><Layout><CatalogAdmin /></Layout></RequireAuth>} />

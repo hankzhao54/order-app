@@ -10,7 +10,7 @@ export default function CatalogAdmin() {
   async function load() {
     setLoading(true)
     const [{ data: it }, { data: c }] = await Promise.all([
-      supabase.from('catalog_items').select('id,name_en,name_hu,order_unit,default_fulfillment,is_active,category_id,batch_yield_qty,batch_yield_unit').order('name_en'),
+      supabase.from('catalog_items').select('id,name_en,name_hu,order_unit,default_fulfillment,is_active,category_id,batch_yield_qty,batch_yield_unit,stock_unit,unit_weight,weight_unit,shelf_life_days,storage_location,reorder_level').order('name_en'),
       supabase.from('categories').select('id,name_en,name_hu,sort_order,is_active').order('sort_order')
     ])
     setItems(it || []); setCats(c || []); setLoading(false)
@@ -87,7 +87,7 @@ function Items({ items, cats, reload }) {
       </div>
 
       <table className="tbl">
-        <thead><tr><th>Name (EN)</th><th>Name (HU)</th><th>Category</th><th>Default</th><th>Unit</th><th>Batch</th><th>Price</th><th>Active</th></tr></thead>
+        <thead><tr><th>Name (EN)</th><th>Name (HU)</th><th>Category</th><th>Default</th><th>Unit</th><th>Batch</th><th>Stock unit</th><th>Unit wt</th><th>Shelf (d)</th><th>Storage</th><th>Low ≤</th><th>Price</th><th>Active</th></tr></thead>
         <tbody>
           {filtered.map(i => (
             <Fragment key={i.id}>
@@ -112,11 +112,19 @@ function Items({ items, cats, reload }) {
                 <input className="cell tiny" value={i.batch_yield_qty ?? ''} onChange={e => set(i.id, { batch_yield_qty: e.target.value })} onBlur={e => patch(i.id, { batch_yield_qty: e.target.value === '' ? null : Number(e.target.value) })} />
                 <input className="cell tiny" value={i.batch_yield_unit || ''} onChange={e => set(i.id, { batch_yield_unit: e.target.value })} onBlur={e => patch(i.id, { batch_yield_unit: e.target.value || null })} />
               </td>
+              <td><input className="cell tiny" placeholder="bag…" value={i.stock_unit || ''} onChange={e => set(i.id, { stock_unit: e.target.value })} onBlur={e => patch(i.id, { stock_unit: e.target.value || null })} /></td>
+              <td className="batchcell">
+                <input className="cell tiny" placeholder="0" value={i.unit_weight ?? ''} onChange={e => set(i.id, { unit_weight: e.target.value })} onBlur={e => patch(i.id, { unit_weight: e.target.value === '' ? null : Number(e.target.value) })} />
+                <select className="cell tiny" value={i.weight_unit || 'g'} onChange={e => patch(i.id, { weight_unit: e.target.value })}><option value="g">g</option><option value="kg">kg</option></select>
+              </td>
+              <td><input className="cell tiny" placeholder="days" value={i.shelf_life_days ?? ''} onChange={e => set(i.id, { shelf_life_days: e.target.value })} onBlur={e => patch(i.id, { shelf_life_days: e.target.value === '' ? null : Number(e.target.value) })} /></td>
+              <td><input className="cell" placeholder="fridge…" value={i.storage_location || ''} onChange={e => set(i.id, { storage_location: e.target.value })} onBlur={e => patch(i.id, { storage_location: e.target.value || null })} /></td>
+              <td><input className="cell tiny" placeholder="≤" value={i.reorder_level ?? ''} onChange={e => set(i.id, { reorder_level: e.target.value })} onBlur={e => patch(i.id, { reorder_level: e.target.value === '' ? null : Number(e.target.value) })} /></td>
               <td><button className="mini" onClick={() => setPriceFor(priceFor === i.id ? null : i.id)}>💰 {priceFor === i.id ? '▾' : 'prices'}</button></td>
               <td><input type="checkbox" checked={i.is_active} onChange={e => patch(i.id, { is_active: e.target.checked })} /></td>
             </tr>
             {priceFor === i.id && (
-              <tr className="pricerow"><td colSpan={8}><PricePanel item={i} /></td></tr>
+              <tr className="pricerow"><td colSpan={13}><PricePanel item={i} /></td></tr>
             )}
             </Fragment>
           ))}

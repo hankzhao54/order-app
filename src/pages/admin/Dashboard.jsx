@@ -17,7 +17,7 @@ export default function Dashboard() {
         .order('created_at', { ascending: true }),
       supabase.from('locations').select('id,name_en,is_central').eq('is_active', true),
       supabase.from('procurement_tasks').select('id,status,item_name'),
-      supabase.from('location_stock').select('location_id, qty, reorder_level, item:catalog_items(name_en), loc:locations(name_en)'),
+      supabase.from('location_stock').select('location_id, qty, item:catalog_items(name_en, reorder_level), loc:locations(name_en)'),
       supabase.from('stock_batches').select('qty, expires_on, item:catalog_items(name_en), loc:locations(name_en)').gt('qty', 0).not('expires_on', 'is', null).order('expires_on')
     ])
     setData({ orders: orders || [], locs: locs || [], tasks: tasks || [], lowStock: lowStock || [], batches: batches || [], weekStart })
@@ -49,7 +49,7 @@ export default function Dashboard() {
 
   // low stock across all locations (qty <= reorder_level, or <=1 when no level set)
   const lowList = (lowStock || []).filter(r => {
-    const t = r.reorder_level == null ? 1 : Number(r.reorder_level)
+    const t = r.item?.reorder_level == null ? 1 : Number(r.item.reorder_level)
     return Number(r.qty) <= t
   }).map(r => ({ name: r.item?.name_en, loc: r.loc?.name_en, qty: Number(r.qty) })).filter(r => r.name)
 
