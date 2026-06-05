@@ -10,7 +10,7 @@ export default function Dashboard() {
 
   async function load() {
     const weekStart = startOfWeek(new Date()).toISOString()
-    const [{ data: orders }, { data: locs }, { data: tasks }, { data: lowStock }] = await Promise.all([
+    const [{ data: orders }, { data: locs }, { data: tasks }, { data: lowStock }, { data: batches }] = await Promise.all([
       supabase.from('orders')
         .select('id,location_id,status,created_at,completed_at,location:locations(name_en),items:order_items(id,item_name_snapshot,dispatch_status,quantity,unit_snapshot)')
         .in('status', ['submitted', 'in_progress', 'completed'])
