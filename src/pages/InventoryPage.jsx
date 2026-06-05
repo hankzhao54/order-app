@@ -98,13 +98,24 @@ export default function InventoryPage() {
   })).filter(i => i.name_en), [rows, catMap])
 
   function openCount(item) { setEdit(item); setEditVal('') }
+  async function setTotal(item, target) {
+    const n = Number(target)
+    if (isNaN(n) || n < 0) { setMsg('Enter a valid number.'); return }
+    const { error } = await supabase.rpc('set_total_fifo', { p_loc: locId, p_item: item.id, p_target: n, p_note: 'stocktake' })
+    if (error) { setMsg(error.message); return }
+    setCounted(c => ({ ...c, [item.id]: true })); setMsg(''); await load()
+  }
+  async function scrapBatch(batch, itemId) {
+    if (!confirm('Throw away this batch? Stock will be reduced and logged as scrap.')) return
+    await supabase.rpc('scrap_batch', { p_batch: batch.id, p_note: 'expired/scrapped' })
+    await load()
+  }
   async function addBatch(item, qty, produced) {
     const n = Number(qty)
     if (isNaN(n) || n <= 0) { setMsg('Enter a batch quantity.'); return }
     const { error } = await supabase.rpc('add_batch', { p_loc: locId, p_item: item.id, p_qty: n, p_produced: produced || new Date().toISOString().slice(0, 10), p_expires: null, p_note: null })
     if (error) { setMsg(error.message); return }
     setCounted(c => ({ ...c, [item.id]: true })); setMsg(''); await load()
-    setEdit(e => e ? { ...e, batches: undefined } : e)  // force re-read from fresh items
   }
   async function editBatchQty(batch, newQty, itemId) {
     const n = Number(newQty)
@@ -186,7 +197,7 @@ export default function InventoryPage() {
         ? <Receiving canPickLoc={canPickLoc} locs={locs} myLoc={locationId} catMap={catMap} onReceived={load} />
         : topTab === 'overview' && canOverview
         ? <Overview locs={locs} catMap={catMap} />
-        : <Stocktake {...{ canPickLoc, locs, locId, setLocId, catalog, catMap, rows, setRows, loading, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted, counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, msg, setMsg, items, openCount, saveLoc, addItem, removeItem, filtered, groups, addable, countedN, locName, inListIds, load, addBatch, editBatchQty, deleteBatch }} />}
+        : <Stocktake {...{ canPickLoc, locs, locId, setLocId, catalog, catMap, rows, setRows, loading, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted, counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, msg, setMsg, items, openCount, saveLoc, addItem, removeItem, filtered, groups, addable, countedN, locName, inListIds, load, setTotal, scrapBatch, addBatch, editBatchQty, deleteBatch }} />}
     </div>
   )
 }
@@ -195,10 +206,13 @@ function Stocktake(p) {
   const { canPickLoc, locs, locId, setLocId, catalog, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted,
     counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, msg,
     items, openCount, saveLoc, addItem, removeItem, loading, groups, addable, countedN, locName,
-    addBatch, editBatchQty, deleteBatch } = p
+    setTotal, scrapBatch, addBatch, editBatchQty, deleteBatch } = p
   const live = edit ? (items.find(x => x.id === edit.id) || edit) : null
+  const [totalVal, setTotalVal] = useState('')
+  const [showBatches, setShowBatches] = useState(false)
   const [newQty, setNewQty] = useState('')
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10))
+  useEffect(() => { if (live) { setTotalVal(String(live.qty)); setShowBatches(false); setNewQty('') } }, [edit])
   return (
     <>
       <div className="inv-top">
@@ -260,40 +274,66 @@ function Stocktake(p) {
         <div className="cnt-overlay" onClick={() => setEdit(null)}>
           <div className="cnt-card" onClick={e => e.stopPropagation()}>
             <div className="cnt-name">{live.name_en}</div>
-            <div className="cnt-sub muted">{locName} · {live.storage_location || 'Unassigned'} · total {live.qty}{live.stock_unit ? ` ${live.stock_unit}` : ''}{live.shelf_life_days ? ` · shelf ${live.shelf_life_days}d` : ''}</div>
+            <div className="cnt-sub muted">{locName} · system has {live.qty}{live.stock_unit ? ` ${live.stock_unit}` : ''}</div>
 
-            <div className="batchlist">
-              {(live.batches || []).length === 0 && <div className="muted small" style={{ padding: '6px 0' }}>No batches yet. Add one below.</div>}
-              {(live.batches || []).map(b => {
-                const st = expiryState(b.expires_on)
-                return (
-                  <div key={b.id} className={`batchrow ${st.cls}`}>
-                    <div className="batchinfo">
-                      <span className="batchmade">made {b.produced_on}</span>
-                      <span className={`batchexp ${st.cls}`}>{b.expires_on ? `exp ${b.expires_on}${st.label ? ` · ${st.label}` : ''}` : 'no expiry'}</span>
+            {/* main: actual total count */}
+            <div className="cnt-row" style={{ marginTop: 14 }}>
+              <button className="cnt-pm" onClick={() => setTotalVal(v => String(Math.max(0, (Number(v) || 0) - 1)))}>−</button>
+              <input className="cnt-val" inputMode="decimal" value={totalVal} onChange={e => setTotalVal(e.target.value)} autoFocus />
+              <button className="cnt-pm" onClick={() => setTotalVal(v => String((Number(v) || 0) + 1))}>+</button>
+            </div>
+            <div className="cnt-quick">{[-10, -5, +5, +10].map(d => <button key={d} onClick={() => setTotalVal(v => String(Math.max(0, (Number(v) || 0) + d)))}>{d > 0 ? `+${d}` : d}</button>)}</div>
+            <button className="primary cnt-savebtn" onClick={() => setTotal(live, totalVal)}>Save count ({totalVal || 0})</button>
+
+            {/* expiring / expired batches to throw away */}
+            {(live.batches || []).filter(b => { const s = expiryState(b.expires_on); return s.cls === 'expired' || s.cls === 'expsoon' }).length > 0 && (
+              <div className="scrapsec">
+                <div className="scrapsec-h">⚠ Expiring / expired — throw away?</div>
+                {(live.batches || []).filter(b => { const s = expiryState(b.expires_on); return s.cls === 'expired' || s.cls === 'expsoon' }).map(b => {
+                  const st = expiryState(b.expires_on)
+                  return (
+                    <div key={b.id} className={`batchrow ${st.cls}`}>
+                      <div className="batchinfo">
+                        <span className="batchmade">{Number(b.qty)}{live.stock_unit ? ` ${live.stock_unit}` : ''} · made {b.produced_on}</span>
+                        <span className={`batchexp ${st.cls}`}>{b.expires_on ? `exp ${b.expires_on} · ${st.label}` : ''}</span>
+                      </div>
+                      <button className="mini danger" onClick={() => scrapBatch(b, live.id)}>🗑 Throw</button>
                     </div>
-                    <input className="batchqty" inputMode="decimal" defaultValue={Number(b.qty)}
-                      onBlur={e => { if (Number(e.target.value) !== Number(b.qty)) editBatchQty(b, e.target.value, live.id) }} />
-                    <button className="mini danger" onClick={() => deleteBatch(b, live.id)}>✕</button>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="addbatch">
-              <div className="addbatch-h">＋ Add batch</div>
-              <div className="addbatch-row">
-                <input className="bq" inputMode="decimal" placeholder="qty" value={newQty} onChange={e => setNewQty(e.target.value)} autoFocus />
-                <input className="bd" type="date" value={newDate} onChange={e => setNewDate(e.target.value)} />
-                <button className="primary" onClick={() => { addBatch(live, newQty, newDate); setNewQty('') }}>Add</button>
+                  )
+                })}
               </div>
-              <div className="faint sm">{live.shelf_life_days
-                ? `Expiry auto-set: +${live.shelf_life_days} days from made date.`
-                : 'No shelf life set — set it in Catalog → Items → Shelf (d).'}</div>
-            </div>
+            )}
+
+            {/* batch detail (collapsed by default) */}
+            <button className="linkish" onClick={() => setShowBatches(s => !s)}>{showBatches ? '▾ Hide batches' : `▸ Batches & new delivery (${(live.batches || []).length})`}</button>
+            {showBatches && (
+              <div className="batchdetail">
+                {(live.batches || []).map(b => {
+                  const st = expiryState(b.expires_on)
+                  return (
+                    <div key={b.id} className={`batchrow ${st.cls}`}>
+                      <div className="batchinfo">
+                        <span className="batchmade">made {b.produced_on}</span>
+                        <span className={`batchexp ${st.cls}`}>{b.expires_on ? `exp ${b.expires_on}${st.label ? ` · ${st.label}` : ''}` : 'no expiry'}</span>
+                      </div>
+                      <input className="batchqty" inputMode="decimal" defaultValue={Number(b.qty)}
+                        onBlur={e => { if (Number(e.target.value) !== Number(b.qty)) editBatchQty(b, e.target.value, live.id) }} />
+                      <button className="mini danger" onClick={() => deleteBatch(b, live.id)}>✕</button>
+                    </div>
+                  )
+                })}
+                <div className="addbatch-row" style={{ marginTop: 8 }}>
+                  <input className="bq" inputMode="decimal" placeholder="qty" value={newQty} onChange={e => setNewQty(e.target.value)} />
+                  <input className="bd" type="date" value={newDate} onChange={e => setNewDate(e.target.value)} />
+                  <button className="primary" onClick={() => { addBatch(live, newQty, newDate); setNewQty('') }}>+ New delivery</button>
+                </div>
+                <div className="faint sm">{live.shelf_life_days ? `Expiry auto-set: +${live.shelf_life_days} days.` : 'No shelf life set (Catalog → Shelf d).'}</div>
+              </div>
+            )}
+
             <div className="cnt-actions">
               <button className="ghost danger" onClick={() => { removeItem(live); setEdit(null) }}>Remove item</button>
-              <button className="primary" onClick={() => setEdit(null)}>Done</button>
+              <button className="ghost" onClick={() => setEdit(null)}>Done</button>
             </div>
           </div>
         </div>

@@ -9,6 +9,7 @@ import DispatchPage from './pages/DispatchPage'
 import ProcurementPage from './pages/ProcurementPage'
 import HistoryPage from './pages/HistoryPage'
 import InventoryPage from './pages/InventoryPage'
+import ReportsPage from './pages/ReportsPage'
 import CatalogAdmin from './pages/admin/CatalogAdmin'
 import LocationsAdmin from './pages/admin/LocationsAdmin'
 import UsersAdmin from './pages/admin/UsersAdmin'
@@ -49,6 +50,7 @@ export default function App() {
       <Route path="/history" element={<RequireAuth allow={everyone}><Layout><HistoryPage /></Layout></RequireAuth>} />
       <Route path="/inventory" element={<RequireAuth allow={['kitchen_manager','admin','store_manager','bar_staff']}><Layout><InventoryPage /></Layout></RequireAuth>} />
       <Route path="/kitchen" element={<RequireAuth allow={staff}><Layout><KitchenPage /></Layout></RequireAuth>} />
+      <Route path="/reports" element={<RequireAuth allow={['kitchen_manager','admin']}><Layout><ReportsPage /></Layout></RequireAuth>} />
       <Route path="/admin/dashboard" element={<RequireAuth allow={['admin']}><Layout><Dashboard /></Layout></RequireAuth>} />
       <Route path="/admin/catalog" element={<RequireAuth allow={['admin']}><Layout><CatalogAdmin /></Layout></RequireAuth>} />
       <Route path="/admin/locations" element={<RequireAuth allow={['admin']}><Layout><LocationsAdmin /></Layout></RequireAuth>} />

@@ -591,3 +591,12 @@ body{ font-size:var(--fs); }
 
 /* dashboard warn chip (expiring soon) */
 .chip.warn{background:var(--warn-bg);color:var(--warn-ink)}
+
+/* stocktake overlay v2: total-first + scrap + batch detail */
+.cnt-savebtn{width:100%;margin-top:14px}
+.scrapsec{margin-top:16px;border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:12px;padding:10px}
+.scrapsec-h{font-weight:700;color:var(--warn-ink);margin-bottom:8px;font-size:13px}
+.scrapsec .batchrow{background:var(--card)}
+.linkish{margin-top:14px;background:none;border:0;color:var(--ink);font-weight:600;cursor:pointer;padding:6px 0;font-family:inherit}
+.linkish:hover{color:var(--ember)}
+.batchdetail{margin-top:8px;display:flex;flex-direction:column;gap:6px}
