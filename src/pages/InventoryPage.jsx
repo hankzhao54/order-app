@@ -110,6 +110,15 @@ export default function InventoryPage() {
     await supabase.rpc('scrap_batch', { p_batch: batch.id, p_note: 'expired/scrapped' })
     await load()
   }
+  async function sendBack(item, qty) {
+    const n = Number(qty)
+    if (isNaN(n) || n <= 0) { setMsg('Enter a quantity to send back.'); return }
+    if (n > item.qty) { setMsg(`Only ${item.qty} in stock.`); return }
+    if (!confirm(`Send ${n}${item.stock_unit ? ' ' + item.stock_unit : ''} of ${item.name_en} back to Central Kitchen? It will leave this store's stock now and await kitchen sign-off.`)) return
+    const { error } = await supabase.rpc('send_back', { p_from: locId, p_item: item.id, p_qty: n, p_note: null })
+    if (error) { setMsg(error.message); return }
+    setMsg(''); await load()
+  }
   async function addBatch(item, qty, produced) {
     const n = Number(qty)
     if (isNaN(n) || n <= 0) { setMsg('Enter a batch quantity.'); return }
@@ -197,7 +206,7 @@ export default function InventoryPage() {
         ? <Receiving canPickLoc={canPickLoc} locs={locs} myLoc={locationId} catMap={catMap} onReceived={load} />
         : topTab === 'overview' && canOverview
         ? <Overview locs={locs} catMap={catMap} />
-        : <Stocktake {...{ canPickLoc, locs, locId, setLocId, catalog, catMap, rows, setRows, loading, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted, counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, msg, setMsg, items, openCount, saveLoc, addItem, removeItem, filtered, groups, addable, countedN, locName, inListIds, load, setTotal, scrapBatch, addBatch, editBatchQty, deleteBatch }} />}
+        : <Stocktake {...{ canPickLoc, locs, locId, setLocId, catalog, catMap, rows, setRows, loading, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted, counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, msg, setMsg, items, openCount, saveLoc, addItem, removeItem, filtered, groups, addable, countedN, locName, inListIds, load, setTotal, scrapBatch, sendBack, addBatch, editBatchQty, deleteBatch }} />}
     </div>
   )
 }
@@ -206,13 +215,15 @@ function Stocktake(p) {
   const { canPickLoc, locs, locId, setLocId, catalog, q, setQ, groupBy, setGroupBy, onlyUncounted, setOnlyUncounted,
     counted, setCounted, collapsed, setCollapsed, adding, setAdding, edit, setEdit, msg,
     items, openCount, saveLoc, addItem, removeItem, loading, groups, addable, countedN, locName,
-    setTotal, scrapBatch, addBatch, editBatchQty, deleteBatch } = p
+    setTotal, scrapBatch, sendBack, addBatch, editBatchQty, deleteBatch } = p
   const live = edit ? (items.find(x => x.id === edit.id) || edit) : null
+  const isCentral = locs.find(l => l.id === locId)?.is_central
   const [totalVal, setTotalVal] = useState('')
   const [showBatches, setShowBatches] = useState(false)
+  const [backQty, setBackQty] = useState('')
   const [newQty, setNewQty] = useState('')
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10))
-  useEffect(() => { if (live) { setTotalVal(String(live.qty)); setShowBatches(false); setNewQty('') } }, [edit])
+  useEffect(() => { if (live) { setTotalVal(String(live.qty)); setShowBatches(false); setNewQty(''); setBackQty('') } }, [edit])
   return (
     <>
       <div className="inv-top">
@@ -301,6 +312,18 @@ function Stocktake(p) {
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {/* send back to central kitchen (stores only) */}
+            {!isCentral && live.qty > 0 && (
+              <div className="backsec">
+                <div className="backsec-h">↩ Send back to Central Kitchen</div>
+                <div className="addbatch-row">
+                  <input className="bq" inputMode="decimal" placeholder="qty" value={backQty} onChange={e => setBackQty(e.target.value)} />
+                  <button className="ghost" onClick={() => { sendBack(live, backQty); setBackQty('') }}>Send back</button>
+                </div>
+                <div className="faint sm">Leaves this store now; kitchen confirms receipt in Receiving.</div>
               </div>
             )}
 
@@ -429,6 +452,7 @@ function Overview({ locs, catMap }) {
 function Receiving({ canPickLoc, locs, myLoc, catMap, onReceived }) {
   const [locId, setLocId] = useState(myLoc || '')
   const [rows, setRows] = useState([])
+  const [returns, setReturns] = useState([])
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
 
@@ -439,12 +463,16 @@ function Receiving({ canPickLoc, locs, myLoc, catMap, onReceived }) {
   async function load() {
     if (!locId) return
     setLoading(true)
-    // dispatched items belonging to this location's orders, not yet received
-    const { data } = await supabase.from('order_items')
-      .select('id, catalog_item_id, item_name_snapshot, unit_snapshot, quantity, fulfilled_qty, fulfillment_type, dispatch_status, order:orders!inner(location_id, location:locations(name_en), created_at)')
-      .eq('dispatch_status', 'dispatched').eq('order.location_id', locId)
-      .order('id', { ascending: false })
-    setRows(data || []); setLoading(false)
+    const [{ data: items }, { data: rets }] = await Promise.all([
+      supabase.from('order_items')
+        .select('id, catalog_item_id, item_name_snapshot, unit_snapshot, quantity, fulfilled_qty, fulfillment_type, dispatch_status, order:orders!inner(location_id, location:locations(name_en), created_at)')
+        .eq('dispatch_status', 'dispatched').eq('order.location_id', locId)
+        .order('id', { ascending: false }),
+      supabase.from('stock_returns')
+        .select('id, catalog_item_id, qty, expires_on, created_at, from_location, from:locations!stock_returns_from_location_fkey(name_en)')
+        .eq('status', 'pending').eq('to_location', locId)
+    ])
+    setRows(items || []); setReturns(rets || []); setLoading(false)
   }
   useEffect(() => { load() }, [locId])
 
@@ -455,6 +483,11 @@ function Receiving({ canPickLoc, locs, myLoc, catMap, onReceived }) {
       await supabase.rpc('add_batch', { p_loc: locId, p_item: item.catalog_item_id, p_qty: qty, p_produced: new Date().toISOString().slice(0,10), p_expires: null, p_note: 'received' })
     }
     setRows(p => p.filter(r => r.id !== item.id))
+    onReceived && onReceived()
+  }
+  async function receiveReturn(r) {
+    await supabase.rpc('receive_return', { p_return: r.id })
+    setReturns(p => p.filter(x => x.id !== r.id))
     onReceived && onReceived()
   }
   async function receiveAll() {
@@ -469,28 +502,48 @@ function Receiving({ canPickLoc, locs, myLoc, catMap, onReceived }) {
       <div className="inv-top">
         {canPickLoc ? (
           <select className="locselect-inv" value={locId} onChange={e => setLocId(e.target.value)}>
-            {locs.filter(l => !l.is_central).map(l => <option key={l.id} value={l.id}>{l.name_en}</option>)}
+            {locs.map(l => <option key={l.id} value={l.id}>{l.name_en}{l.is_central ? ' (kitchen)' : ''}</option>)}
           </select>
         ) : <span className="inv-loc">📍 {locName}</span>}
-        <span className="inv-prog">{rows.length} to receive</span>
-        {rows.length > 0 && <button className="primary" onClick={receiveAll}>✓ Receive all</button>}
+        <span className="inv-prog">{rows.length + returns.length} to receive</span>
+        {rows.length > 0 && <button className="primary" onClick={receiveAll}>✓ Receive all deliveries</button>}
       </div>
       {msg && <div className="error">{msg}</div>}
       {loading ? <div className="center muted">Loading…</div>
-        : rows.length === 0 ? <div className="center muted">Nothing waiting to be received. ✅</div>
-        : <div className="invgroup">
-            {rows.map(i => (
-              <div className="invrow2" key={i.id} style={{ cursor: 'default' }}>
-                <div className="invinfo">
-                  <span className="invname">{i.item_name_snapshot}</span>
-                  <span className="muted small">{i.fulfillment_type === 'make' ? '🍳' : '🛒'} · sent {i.order?.created_at ? new Date(i.order.created_at).toLocaleDateString() : ''}</span>
-                </div>
-                <span className="qbig">{Number(i.fulfilled_qty ?? i.quantity)}<small>{i.unit_snapshot ? ` ${i.unit_snapshot}` : ''}</small></span>
-                <button className="mini ok" onClick={() => receive(i)}>✓ Received</button>
+        : (rows.length === 0 && returns.length === 0) ? <div className="center muted">Nothing waiting to be received. ✅</div>
+        : <>
+            {returns.length > 0 && (
+              <div className="invgroup">
+                <div className="invgrouphd"><span>↩ Returns from stores</span><span className="muted small">{returns.length}</span></div>
+                {returns.map(r => (
+                  <div className="invrow2" key={r.id} style={{ cursor: 'default' }}>
+                    <div className="invinfo">
+                      <span className="invname">{catMap[r.catalog_item_id]?.name_en || 'Item'}</span>
+                      <span className="muted small">from {r.from?.name_en || '—'}{r.expires_on ? ` · exp ${r.expires_on}` : ''}</span>
+                    </div>
+                    <span className="qbig">{Number(r.qty)}<small>{catMap[r.catalog_item_id]?.stock_unit ? ` ${catMap[r.catalog_item_id].stock_unit}` : ''}</small></span>
+                    <button className="mini ok" onClick={() => receiveReturn(r)}>✓ Received</button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>}
-      <p className="muted small" style={{ marginTop: 10 }}>Confirming adds the quantity to {locName}'s stock. Items not on the list are added automatically.</p>
+            )}
+            {rows.length > 0 && (
+              <div className="invgroup">
+                <div className="invgrouphd"><span>📦 Deliveries</span><span className="muted small">{rows.length}</span></div>
+                {rows.map(i => (
+                  <div className="invrow2" key={i.id} style={{ cursor: 'default' }}>
+                    <div className="invinfo">
+                      <span className="invname">{i.item_name_snapshot}</span>
+                      <span className="muted small">{i.fulfillment_type === 'make' ? '🍳' : '🛒'} · sent {i.order?.created_at ? new Date(i.order.created_at).toLocaleDateString() : ''}</span>
+                    </div>
+                    <span className="qbig">{Number(i.fulfilled_qty ?? i.quantity)}<small>{i.unit_snapshot ? ` ${i.unit_snapshot}` : ''}</small></span>
+                    <button className="mini ok" onClick={() => receive(i)}>✓ Received</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>}
+      <p className="muted small" style={{ marginTop: 10 }}>Confirming adds the quantity to {locName}'s stock.</p>
     </div>
   )
 }

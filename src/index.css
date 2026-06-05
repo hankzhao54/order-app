@@ -600,3 +600,7 @@ body{ font-size:var(--fs); }
 .linkish{margin-top:14px;background:none;border:0;color:var(--ink);font-weight:600;cursor:pointer;padding:6px 0;font-family:inherit}
 .linkish:hover{color:var(--ember)}
 .batchdetail{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+
+/* send-back section in stocktake overlay */
+.backsec{margin-top:14px;border:1px dashed var(--line-2,var(--line));border-radius:12px;padding:10px}
+.backsec-h{font-weight:700;margin-bottom:8px;font-size:13px}
