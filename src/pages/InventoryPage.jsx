@@ -62,7 +62,7 @@ export default function InventoryPage() {
       const [{ data: l }, { data: c }] = await Promise.all([
         supabase.from('locations').select('id,name_en,is_central').eq('is_active', true).order('is_central', { ascending: false }).order('name_en'),
         supabase.from('catalog_items').select('id,name_en,name_hu,stock_unit,unit_weight,weight_unit,shelf_life_days,storage_location,reorder_level,category:categories(name_en)')
-          .eq('default_fulfillment', 'make').eq('is_active', true).order('name_en')
+          .eq('is_active', true).order('name_en')
       ])
       setLocs(l || []); setCatalog(c || [])
       if (!locId) {
