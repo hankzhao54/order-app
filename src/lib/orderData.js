@@ -31,14 +31,16 @@ export async function removeFavorite(catalogItemId) {
     .eq('user_id', u.user.id).eq('catalog_item_id', catalogItemId)
 }
 
-export async function submitOrder({ locationId, orderType, lines, adhoc, parentOrderId }) {
+export async function submitOrder({ locationId, orderType, lines, adhoc, parentOrderId, productionWeek }) {
+  const finalType = parentOrderId ? 'urgent' : orderType
   const { data: order, error } = await supabase.from('orders')
     .insert({
       location_id: locationId,
-      order_type: parentOrderId ? 'urgent' : orderType,
+      order_type: finalType,
       status: 'submitted',
       submitted_at: new Date().toISOString(),
-      parent_order_id: parentOrderId || null
+      parent_order_id: parentOrderId || null,
+      production_week: finalType === 'weekly' ? (productionWeek || null) : null
     })
     .select('id').single()
   if (error) throw error

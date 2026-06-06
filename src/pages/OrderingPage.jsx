@@ -5,9 +5,11 @@ import {
   loadCatalog, addFavorite, removeFavorite, submitOrder,
   loadTemplates, saveTemplate, loadHistory
 } from '../lib/orderData'
+import { loadCutoff, productionWeek, cutoffLabel } from '../lib/cutoff'
 
 export default function OrderingPage() {
   const { locationId, isStaff, profile } = useAuth()
+  const [cutoff, setCutoff] = useState(null)
   const [locations, setLocations] = useState([])
   const [locId, setLocId] = useState(locationId || '')
   const [cats, setCats] = useState([])
@@ -24,6 +26,9 @@ export default function OrderingPage() {
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [amending, setAmending] = useState(null)   // { id, label } when adding to a locked order
+
+  useEffect(() => { loadCutoff().then(setCutoff) }, [])
+  const prodWeek = cutoff && orderType === 'weekly' ? productionWeek(cutoff) : null
 
   // staff (no fixed location) can pick a location to order for
   useEffect(() => {
@@ -78,7 +83,7 @@ export default function OrderingPage() {
     if (totalLines === 0) { setMsg('Cart is empty.'); return }
     setBusy(true); setMsg('')
     try {
-      const n = await submitOrder({ locationId: locId, orderType, lines, adhoc, parentOrderId: amending?.id })
+      const n = await submitOrder({ locationId: locId, orderType, lines, adhoc, parentOrderId: amending?.id, productionWeek: orderType === 'weekly' ? prodWeek : null })
       setCart({}); setAdhoc([])
       setMsg(amending ? `✓ Top-up submitted for ${amending.label} — ${n} item(s).` : `✓ Order submitted — ${n} item(s).`)
       setAmending(null)
@@ -210,6 +215,12 @@ export default function OrderingPage() {
           {/* cart */}
           <aside className="cart">
             <h3>Cart <span className="muted">({totalLines})</span></h3>
+            {cutoff && orderType === 'weekly' && prodWeek && (
+              <div className="cutoff-banner">📅 This weekly order is for production week of <b>{prodWeek}</b> (cutoff {cutoffLabel(cutoff)}).</div>
+            )}
+            {orderType === 'urgent' && (
+              <div className="cutoff-banner locked">🔥 Urgent order — handled right away, not tied to a production week.</div>
+            )}
             <div className="seg">
               {['weekly', 'urgent'].map(t =>
                 <button key={t} className={orderType === t ? 'on' : ''} onClick={() => setOrderType(t)}>{t}</button>)}

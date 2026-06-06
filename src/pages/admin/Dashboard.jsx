@@ -77,6 +77,7 @@ export default function Dashboard() {
   return (
     <div className="dashboard">
       <h2 className="dash-title">This week at a glance</h2>
+      <CutoffSetting />
       <div className="statgrid">
         <Stat n={orders.length} label="Open orders" />
         <Stat n={pending} label="Items to handle" tone={pending ? 'warn' : ''} />
@@ -145,6 +146,39 @@ export default function Dashboard() {
         <Link className="dlink" to="/procurement">🛒 Procurement</Link>
         <Link className="dlink" to="/admin/catalog">📋 Catalog</Link>
         <Link className="dlink" to="/history">🗓 History</Link>
+      </div>
+    </div>
+  )
+}
+
+function CutoffSetting() {
+  const [cfg, setCfg] = useState(null)
+  const [msg, setMsg] = useState('')
+  const WD = [['1', 'Mon'], ['2', 'Tue'], ['3', 'Wed'], ['4', 'Thu'], ['5', 'Fri'], ['6', 'Sat'], ['7', 'Sun']]
+  useEffect(() => {
+    supabase.from('app_settings').select('value').eq('key', 'order_cutoff').maybeSingle()
+      .then(({ data }) => setCfg(data?.value || { weekday: 1, hour: 8, minute: 0, tz: 'Europe/Budapest', enabled: true }))
+  }, [])
+  async function save(next) {
+    setCfg(next)
+    const { error } = await supabase.from('app_settings').upsert({ key: 'order_cutoff', value: next, updated_at: new Date().toISOString() })
+    setMsg(error ? 'Error: ' + error.message : '✓ Saved')
+    setTimeout(() => setMsg(''), 2000)
+  }
+  if (!cfg) return null
+  return (
+    <div className="cutoff-setting card">
+      <div className="cutoff-row">
+        <span className="cutoff-lbl">🕒 Weekly order cutoff</span>
+        <label className="inline"><input type="checkbox" checked={cfg.enabled !== false} onChange={e => save({ ...cfg, enabled: e.target.checked })} /> enabled</label>
+        <select value={cfg.weekday} disabled={cfg.enabled === false} onChange={e => save({ ...cfg, weekday: Number(e.target.value) })}>
+          {WD.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <input type="time" disabled={cfg.enabled === false}
+          value={`${String(cfg.hour ?? 8).padStart(2, '0')}:${String(cfg.minute ?? 0).padStart(2, '0')}`}
+          onChange={e => { const [h, m] = e.target.value.split(':').map(Number); save({ ...cfg, hour: h, minute: m }) }} />
+        <span className="muted small">Budapest time · orders after this go to next week's production</span>
+        {msg && <span className="notice">{msg}</span>}
       </div>
     </div>
   )

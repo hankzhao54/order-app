@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
+import { thisMonday } from '../lib/cutoff'
 
-const SELECT = `id, order_type, status, created_at, parent_order_id,
+const SELECT = `id, order_type, status, created_at, parent_order_id, production_week,
   location:locations(name_en),
   items:order_items(id, catalog_item_id, item_name_snapshot, unit_snapshot, quantity, fulfillment_type,
                     dispatch_status, fulfilled_qty, unavail_reason)`
@@ -206,15 +207,30 @@ export default function KitchenPage() {
 
       {view === 'orders' && !showCompleted && orders.filter(o => o.status !== 'completed').length === 0 && <div className="center muted">No open orders. 🎉</div>}
       {view === 'orders' && showCompleted && orders.filter(o => o.status === 'completed').length === 0 && <div className="center muted">No completed orders yet this week.</div>}
-      {view === 'orders' && orders.filter(o => showCompleted ? o.status === 'completed' : o.status !== 'completed').map(o => {
+      {view === 'orders' && (() => {
+        const tm = thisMonday()
+        const bucketOf = o => {
+          if (o.order_type === 'urgent' || o.parent_order_id) return 0
+          const pw = o.production_week
+          if (!pw || pw <= tm) return 1
+          return 2
+        }
+        const BLABEL = { 0: '🔥 Urgent — handle now', 1: "📅 This week's production", 2: '📅 Next week' }
+        const list = orders.filter(o => showCompleted ? o.status === 'completed' : o.status !== 'completed')
+          .slice().sort((a, b) => bucketOf(a) - bucketOf(b) || new Date(a.created_at) - new Date(b.created_at))
+        let lastB = null
+        return list.map(o => {
         const isDone = o.status === 'completed'
         const handled = o.items.filter(i => i.dispatch_status !== 'pending').length
         const allHandled = o.items.length > 0 && handled === o.items.length
         const n = s => o.items.filter(i => i.dispatch_status === s).length
         const pend = n('pending'), rdy = n('ready'), sh = n('short'), un = n('unavailable'), dis = n('dispatched')
         const proc = n('procuring')
+        const b = bucketOf(o); const sep = b !== lastB ? (lastB = b, BLABEL[b]) : null
         return (
-          <div key={o.id} className={`ticket${isDone ? ' ticket-done' : ''}`}>
+          <div key={o.id}>
+            {sep && <div className="prodsep">{sep}</div>}
+          <div className={`ticket${isDone ? ' ticket-done' : ''}`}>
             <div className="tickethead">
               <div>
                 <b>{o.location?.name_en}</b>
@@ -354,8 +370,10 @@ export default function KitchenPage() {
               )}
             </div>
           </div>
+          </div>
         )
-      })}
+      })
+      })()}
 
       {showCancelled && (
         <div className="cancelled-zone">
