@@ -626,3 +626,8 @@ body{ font-size:var(--fs); }
 /* order item unit label */
 .oname .ounit{margin-left:6px;font-size:13px;font-weight:700;color:var(--ember-ink,var(--ember));opacity:.9}
 .ministep span small{font-size:11px;font-weight:600;opacity:.7}
+
+/* catalog header hints */
+.th-label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.th-info{font-size:11px;opacity:.45;cursor:help;font-weight:400}
+.th-info:hover{opacity:.9}

@@ -87,7 +87,21 @@ function Items({ items, cats, reload }) {
       </div>
 
       <table className="tbl">
-        <thead><tr><th>Name (EN)</th><th>Name (HU)</th><th>Category</th><th>Default</th><th>Unit</th><th>Batch</th><th>Stock unit</th><th>Unit wt</th><th>Shelf (d)</th><th>Storage</th><th>Low ≤</th><th>Price</th><th>Active</th></tr></thead>
+        <thead><tr>
+          <Th label="Name (EN)" hint="Item name in English. Shown to staff when ordering." />
+          <Th label="Name (HU)" hint="Item name in Hungarian. Shown as the secondary label." />
+          <Th label="Category" hint="Which group the item belongs to (e.g. Sauces, Drinks). Controls grouping on the order & inventory pages." />
+          <Th label="Default" hint="How this item is fulfilled by default: Make = produced by Central Kitchen; Buy = purchased from a supplier." />
+          <Th label="Unit" hint="Order unit — what stores order in (e.g. kg, bag, box). Shown on the ordering page next to quantity." />
+          <Th label="Batch" hint="Batch yield for Make items: how much one production batch makes (qty + unit). Reference for the kitchen. Leave blank for Buy items." />
+          <Th label="Stock unit" hint="Inventory unit — what stocktake & batches are counted in (e.g. bag, box). Usually the same as Order unit." />
+          <Th label="Per unit" hint="How much is in one unit: weight (g/kg) or count (pcs/db). e.g. 1 bag = 16 pcs → 16 + pcs. Used to auto-calc totals in inventory. Leave blank if not needed." />
+          <Th label="Shelf (d)" hint="Shelf life in days. When a batch is made/received, its expiry = production date + this many days. Blank = never expires." />
+          <Th label="Storage" hint="Default storage location label (e.g. fridge, freezer, dry store). Shared across all sites." />
+          <Th label="Low ≤" hint="Low-stock alert threshold. When stock at a site is at or below this number, it's flagged as low. Blank = alert at ≤1." />
+          <Th label="Price" hint="Supplier price history. Click to view/add prices per supplier (used for purchasing spend reports)." />
+          <Th label="Active" hint="Uncheck to hide this item from ordering and inventory without deleting it." />
+        </tr></thead>
         <tbody>
           {filtered.map(i => (
             <Fragment key={i.id}>
@@ -115,7 +129,7 @@ function Items({ items, cats, reload }) {
               <td><input className="cell tiny" placeholder="bag…" value={i.stock_unit || ''} onChange={e => set(i.id, { stock_unit: e.target.value })} onBlur={e => patch(i.id, { stock_unit: e.target.value || null })} /></td>
               <td className="batchcell">
                 <input className="cell tiny" placeholder="0" value={i.unit_weight ?? ''} onChange={e => set(i.id, { unit_weight: e.target.value })} onBlur={e => patch(i.id, { unit_weight: e.target.value === '' ? null : Number(e.target.value) })} />
-                <select className="cell tiny" value={i.weight_unit || 'g'} onChange={e => patch(i.id, { weight_unit: e.target.value })}><option value="g">g</option><option value="kg">kg</option></select>
+                <select className="cell tiny" value={i.weight_unit || 'g'} onChange={e => patch(i.id, { weight_unit: e.target.value })}><option value="g">g</option><option value="kg">kg</option><option value="pcs">pcs (db)</option></select>
               </td>
               <td><input className="cell tiny" placeholder="days" value={i.shelf_life_days ?? ''} onChange={e => set(i.id, { shelf_life_days: e.target.value })} onBlur={e => patch(i.id, { shelf_life_days: e.target.value === '' ? null : Number(e.target.value) })} /></td>
               <td><input className="cell" placeholder="fridge…" value={i.storage_location || ''} onChange={e => set(i.id, { storage_location: e.target.value })} onBlur={e => patch(i.id, { storage_location: e.target.value || null })} /></td>
@@ -263,5 +277,13 @@ function PricePanel({ item }) {
         </table>
       )}
     </div>
+  )
+}
+
+function Th({ label, hint }) {
+  return (
+    <th>
+      <span className="th-label">{label}<span className="th-info" title={hint}>ⓘ</span></span>
+    </th>
   )
 }

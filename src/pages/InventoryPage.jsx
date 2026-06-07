@@ -31,6 +31,11 @@ const isLow = (qty, reorder) => {
 const fmtTotal = (qty, i) => {
   const w = Number(i.unit_weight)
   if (!w || !Number(qty)) return null
+  // pcs: count pieces instead of weight
+  if (i.weight_unit === 'pcs') {
+    const total = w * Number(qty)
+    return `${total % 1 === 0 ? total : total.toFixed(1)} pcs`
+  }
   const grams = w * Number(qty) * (i.weight_unit === 'kg' ? 1000 : 1)
   return grams >= 1000 ? `${(grams / 1000).toFixed(grams % 1000 === 0 ? 0 : 2)} kg` : `${Math.round(grams)} g`
 }
