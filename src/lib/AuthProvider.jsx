@@ -11,25 +11,37 @@ export function AuthProvider({ children }) {
 
   async function loadProfile(userId) {
     if (!userId) { setProfile(null); return }
-    const { data } = await supabase
-      .from('profiles')
-      .select('user_id, role, location_id, full_name, location:locations(name_en,name_hu)')
-      .eq('user_id', userId)
-      .maybeSingle()
-    setProfile(data || null)
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('user_id, role, location_id, full_name, location:locations(name_en,name_hu)')
+        .eq('user_id', userId)
+        .maybeSingle()
+      setProfile(data || null)
+    } catch { /* keep going even if profile fetch fails */ }
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      setSession(data.session)
-      await loadProfile(data.session?.user?.id)
-      setLoading(false)
-    })
+    let done = false
+    const finish = () => { if (!done) { done = true; setLoading(false) } }
+    // hard fallback: never hang on the splash loader
+    const t = setTimeout(finish, 2500)
+
+    ;(async () => {
+      try {
+        const { data } = await supabase.auth.getSession()
+        setSession(data.session)
+        await loadProfile(data.session?.user?.id)
+      } catch { /* ignore */ }
+      finally { clearTimeout(t); finish() }
+    })()
+
     const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
       setSession(s)
       await loadProfile(s?.user?.id)
+      finish()
     })
-    return () => sub.subscription.unsubscribe()
+    return () => { clearTimeout(t); sub.subscription.unsubscribe() }
   }, [])
 
   const value = {

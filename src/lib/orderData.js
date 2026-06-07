@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 export async function loadCatalog(locationId) {
   const [{ data: cats }, { data: items }] = await Promise.all([
     supabase.from('categories').select('id,name_en,name_hu,sort_order').eq('is_active', true).order('sort_order'),
-    supabase.from('catalog_items').select('id,name_en,name_hu,order_unit,category_id,default_fulfillment').eq('is_active', true).order('name_en')
+    supabase.from('catalog_items').select('id,name_en,name_hu,order_unit,stock_unit,category_id,default_fulfillment').eq('is_active', true).order('name_en')
   ])
   let favs = []
   const { data: u } = await supabase.auth.getUser()
@@ -51,7 +51,7 @@ export async function submitOrder({ locationId, orderType, lines, adhoc, parentO
     if (a.name) rows.push({ order_id: order.id, catalog_item_id: null, item_name_snapshot: a.name, unit_snapshot: a.unit || null, quantity: Number(a.qty) || 1 })
   const { error: e2 } = await supabase.from('order_items').insert(rows)
   if (e2) throw e2
-  return rows.length
+  return { count: rows.length, orderId: order.id }
 }
 
 // ---- templates (weekly fixed orders) ----

@@ -47,6 +47,7 @@ export default function OrderingPage() {
   const favItems = favs.map(f => ({ fav: f, it: byId[f.catalog_item_id] })).filter(x => x.it)
   const favSet = new Set(favs.map(f => f.catalog_item_id))
   const catName = id => cats.find(c => c.id === id)?.name_en || 'Uncategorized'
+  const unitOf = it => it.order_unit || it.stock_unit || ''
   const locName = locations.find(l => l.id === locId)?.name_en
     || profile?.location?.name_en || ''
 
@@ -83,7 +84,8 @@ export default function OrderingPage() {
     if (totalLines === 0) { setMsg('Cart is empty.'); return }
     setBusy(true); setMsg('')
     try {
-      const n = await submitOrder({ locationId: locId, orderType, lines, adhoc, parentOrderId: amending?.id, productionWeek: orderType === 'weekly' ? prodWeek : null })
+      const res = await submitOrder({ locationId: locId, orderType, lines, adhoc, parentOrderId: amending?.id, productionWeek: orderType === 'weekly' ? prodWeek : null })
+      const n = res?.count ?? res
       setCart({}); setAdhoc([])
       setMsg(amending ? `✓ Top-up submitted for ${amending.label} — ${n} item(s).` : `✓ Order submitted — ${n} item(s).`)
       setAmending(null)
@@ -94,6 +96,20 @@ export default function OrderingPage() {
     const next = {}
     for (const it of t.items) if (it.catalog_item_id) next[it.catalog_item_id] = it.default_qty
     setCart(next); setMsg(`Loaded template "${t.name}" — adjust & submit.`)
+  }
+  async function repeatLastOrder() {
+    if (!locId) { setMsg('Pick a location.'); return }
+    const { data, error } = await supabase.from('orders')
+      .select('id, created_at, items:order_items(catalog_item_id, quantity)')
+      .eq('location_id', locId).neq('status', 'cancelled')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (error) { setMsg(error.message); return }
+    if (!data || !data.items?.length) { setMsg('No previous order found for this location.'); return }
+    const next = {}
+    for (const it of data.items) if (it.catalog_item_id) next[it.catalog_item_id] = (next[it.catalog_item_id] || 0) + Number(it.quantity)
+    if (Object.keys(next).length === 0) { setMsg('Last order had no standard items to repeat.'); return }
+    setCart(next); setTab('order')
+    setMsg(`Loaded your last order (${new Date(data.created_at).toLocaleDateString()}) — adjust & submit.`)
   }
   async function doSaveTemplate() {
     const name = prompt('Template name (e.g. "Weekly – 101 Neo")')
@@ -117,13 +133,13 @@ export default function OrderingPage() {
         {favSet.has(it.id) ? '★' : '☆'}
       </button>
       <div className="oinfo" onClick={() => add(it.id)}>
-        <div className="oname">{it.name_en}</div>
-        <div className="osub muted">{it.name_hu}{it.order_unit ? ` · ${it.order_unit}` : ''}</div>
+        <div className="oname">{it.name_en}{unitOf(it) && <span className="ounit">/ {unitOf(it)}</span>}</div>
+        <div className="osub muted">{it.name_hu}</div>
       </div>
       {cart[it.id] > 0
         ? <div className="ministep">
             <button onClick={() => setQty(it.id, cart[it.id] - 1)}>−</button>
-            <span>{cart[it.id]}</span>
+            <span>{cart[it.id]}{unitOf(it) ? <small> {unitOf(it)}</small> : ''}</span>
             <button onClick={() => setQty(it.id, cart[it.id] + 1)}>+</button>
           </div>
         : <button className="addbtn" onClick={() => add(it.id)}>Add</button>}
@@ -184,15 +200,14 @@ export default function OrderingPage() {
                   )}
                 </div>
 
-                {/* template shortcuts */}
-                {templates.length > 0 && (
-                  <div className="templates">
-                    <span className="muted small">Templates:</span>
-                    {templates.map(t => (
-                      <button key={t.id} className="chip" onClick={() => loadTemplateIntoCart(t)}>{t.name}</button>
-                    ))}
-                  </div>
-                )}
+                {/* quick start */}
+                <div className="quickstart">
+                  <button className="btn-repeat" onClick={repeatLastOrder}>↻ Repeat last order</button>
+                  {templates.length > 0 && <span className="muted small" style={{ marginLeft: 4 }}>or a template:</span>}
+                  {templates.map(t => (
+                    <button key={t.id} className="chip" onClick={() => loadTemplateIntoCart(t)}>{t.name}</button>
+                  ))}
+                </div>
 
                 {/* category drawers */}
                 {cats.map(c => {

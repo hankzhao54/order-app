@@ -8,6 +8,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico'],
+      workbox: {
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true
+      },
       manifest: {
         name: 'Order App',
         short_name: 'Orders',

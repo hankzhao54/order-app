@@ -616,3 +616,13 @@ body{ font-size:var(--fs); }
 /* kitchen production-week separators */
 .prodsep{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:14px;color:var(--ink);
   margin:18px 0 8px;padding-bottom:6px;border-bottom:2px solid var(--ember);letter-spacing:.01em}
+
+/* order quick-start */
+.quickstart{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:4px 0 14px}
+.btn-repeat{font-family:'Hanken Grotesk',sans-serif;font-weight:700;font-size:14px;padding:10px 18px;border-radius:var(--radius-sm);
+  cursor:pointer;border:1px solid var(--ember);background:var(--ember-bg);color:var(--ember-ink)}
+.btn-repeat:hover{background:var(--ember);color:#fff}
+
+/* order item unit label */
+.oname .ounit{margin-left:6px;font-size:13px;font-weight:700;color:var(--ember-ink,var(--ember));opacity:.9}
+.ministep span small{font-size:11px;font-weight:600;opacity:.7}

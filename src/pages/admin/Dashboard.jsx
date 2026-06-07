@@ -162,8 +162,7 @@ function CutoffSetting() {
   async function save(next) {
     setCfg(next)
     const { error } = await supabase.from('app_settings').upsert({ key: 'order_cutoff', value: next, updated_at: new Date().toISOString() })
-    setMsg(error ? 'Error: ' + error.message : '✓ Saved')
-    setTimeout(() => setMsg(''), 2000)
+    setMsg(error ? 'Error: ' + error.message : '✓ Saved'); setTimeout(() => setMsg(''), 2000)
   }
   if (!cfg) return null
   return (
