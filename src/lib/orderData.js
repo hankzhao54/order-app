@@ -31,8 +31,46 @@ export async function removeFavorite(catalogItemId) {
     .eq('user_id', u.user.id).eq('catalog_item_id', catalogItemId)
 }
 
+async function findMergeTarget(locationId, productionWeek) {
+  // an existing weekly order for same location + production week that hasn't been started
+  const { data: candidates } = await supabase.from('orders')
+    .select('id, status, items:order_items(id, catalog_item_id, quantity, dispatch_status)')
+    .eq('location_id', locationId).eq('order_type', 'weekly').eq('production_week', productionWeek)
+    .not('status', 'in', '(completed,cancelled)')
+    .order('created_at', { ascending: true })
+  for (const o of candidates || []) {
+    if (o.items.length > 0 && o.items.every(i => i.dispatch_status === 'pending')) return o
+  }
+  return null
+}
+
 export async function submitOrder({ locationId, orderType, lines, adhoc, parentOrderId, productionWeek }) {
   const finalType = parentOrderId ? 'urgent' : orderType
+
+  // weekly orders (not top-ups) merge into an existing untouched order for the same production week
+  if (finalType === 'weekly' && productionWeek && !parentOrderId) {
+    const target = await findMergeTarget(locationId, productionWeek)
+    if (target) {
+      const existing = {}
+      for (const it of target.items) if (it.catalog_item_id) existing[it.catalog_item_id] = it
+      let added = 0
+      for (const l of lines) {
+        if (existing[l.id]) {
+          await supabase.from('order_items').update({ quantity: Number(existing[l.id].quantity) + Number(l.qty) }).eq('id', existing[l.id].id)
+        } else {
+          await supabase.from('order_items').insert({ order_id: target.id, catalog_item_id: l.id, item_name_snapshot: l.name_en, unit_snapshot: l.order_unit, quantity: l.qty })
+        }
+        added++
+      }
+      for (const a of adhoc) if (a.name) {
+        await supabase.from('order_items').insert({ order_id: target.id, catalog_item_id: null, item_name_snapshot: a.name, unit_snapshot: a.unit || null, quantity: Number(a.qty) || 1 })
+        added++
+      }
+      await supabase.from('orders').update({ submitted_at: new Date().toISOString() }).eq('id', target.id)
+      return { count: added, orderId: target.id, merged: true }
+    }
+  }
+
   const { data: order, error } = await supabase.from('orders')
     .insert({
       location_id: locationId,
@@ -51,7 +89,7 @@ export async function submitOrder({ locationId, orderType, lines, adhoc, parentO
     if (a.name) rows.push({ order_id: order.id, catalog_item_id: null, item_name_snapshot: a.name, unit_snapshot: a.unit || null, quantity: Number(a.qty) || 1 })
   const { error: e2 } = await supabase.from('order_items').insert(rows)
   if (e2) throw e2
-  return { count: rows.length, orderId: order.id }
+  return { count: rows.length, orderId: order.id, merged: false }
 }
 
 // ---- templates (weekly fixed orders) ----

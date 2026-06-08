@@ -87,7 +87,11 @@ export default function OrderingPage() {
       const res = await submitOrder({ locationId: locId, orderType, lines, adhoc, parentOrderId: amending?.id, productionWeek: orderType === 'weekly' ? prodWeek : null })
       const n = res?.count ?? res
       setCart({}); setAdhoc([])
-      setMsg(amending ? `✓ Top-up submitted for ${amending.label} — ${n} item(s).` : `✓ Order submitted — ${n} item(s).`)
+      setMsg(amending
+        ? `✓ Top-up submitted for ${amending.label} — ${n} item(s).`
+        : res?.merged
+          ? `✓ Added to this week's existing order — ${n} item(s) merged.`
+          : `✓ Order submitted — ${n} item(s).`)
       setAmending(null)
     } catch (e) { setMsg(e.message) } finally { setBusy(false) }
   }

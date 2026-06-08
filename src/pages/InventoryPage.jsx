@@ -252,7 +252,7 @@ function Stocktake(p) {
         <div className="addpanel card">
           <div className="muted small" style={{ marginBottom: 6 }}>Tap to add to <b>{locName}</b>'s stocktake list (search above to filter):</div>
           <div className="addchips">
-            {addable.slice(0, 60).map(c => <button key={c.id} className="chip addchip" onClick={() => addItem(c.id)}>+ {c.name_en}</button>)}
+            {addable.slice(0, 60).map(c => <button key={c.id} className="chip addchip" onClick={() => addItem(c.id)}>+ {c.name_en}{c.name_hu ? ` (${c.name_hu})` : ''}</button>)}
             {addable.length === 0 && <span className="muted small">All matching items already added.</span>}
           </div>
         </div>
@@ -277,7 +277,7 @@ function Stocktake(p) {
                     {ex.cls === 'expired' && <span className="exptag expired">expired</span>}
                     {ex.cls === 'expsoon' && <span className="exptag expsoon">{ex.label}</span>}
                   </span>
-                  <span className="muted small">{i.unit_weight ? `${i.unit_weight}${i.weight_unit || 'g'}/${i.stock_unit || 'unit'}` : (i.stock_unit || '')}</span>
+                  <span className="muted small">{i.name_hu || ''}</span>
                 </div>
                 <span className="qbig">{i.qty}<small>{i.stock_unit ? ` ${i.stock_unit}` : ''}</small></span>
                 <span className="twt">{fmtTotal(i.qty, i) || ''}</span>
@@ -289,7 +289,7 @@ function Stocktake(p) {
       {live && (
         <div className="cnt-overlay" onClick={() => setEdit(null)}>
           <div className="cnt-card" onClick={e => e.stopPropagation()}>
-            <div className="cnt-name">{live.name_en}</div>
+            <div className="cnt-name">{live.name_en}{live.name_hu ? <span className="muted" style={{ fontWeight: 400, fontSize: '0.8em' }}> · {live.name_hu}</span> : ''}</div>
             <div className="cnt-sub muted">{locName} · system has {live.qty}{live.stock_unit ? ` ${live.stock_unit}` : ''}</div>
 
             {/* main: actual total count */}

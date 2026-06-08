@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { toLoginEmail } from '../../lib/username'
 
 const ROLES = ['restaurant_orderer', 'store_manager', 'bar_staff', 'kitchen_manager', 'driver', 'admin']
 const ROLE_LABEL = {
@@ -75,17 +76,18 @@ export default function UsersAdmin() {
 
   async function createUser() {
     setMsg('')
-    if (!form.email.trim() || !form.password) { setMsg('Email and password are required.'); return }
+    if (!form.email.trim() || !form.password) { setMsg('Username and password are required.'); return }
     if (form.password.length < 6) { setMsg('Password must be at least 6 characters.'); return }
     if (STORE_BOUND.includes(form.role) && !form.location_id) { setMsg('This role must have a location.'); return }
     setBusy(true)
+    const loginEmail = toLoginEmail(form.email)
     const { data, error } = await callFn({
-      email: form.email.trim(), password: form.password,
+      email: loginEmail, password: form.password,
       full_name: form.full_name.trim() || null, role: form.role, location_id: form.location_id || null
     })
     setBusy(false)
     if (error || data?.error) { setMsg('Error: ' + (data?.error || error.message)); return }
-    setMsg(`✓ Created ${form.email.trim()}.`)
+    setMsg(`✓ Created ${loginEmail}.`)
     setForm({ email: '', password: '', full_name: '', role: 'restaurant_orderer', location_id: '' })
     load()
   }
@@ -95,7 +97,7 @@ export default function UsersAdmin() {
       <div className="addtask card">
         <h3>Add user</h3>
         <div className="adduser-grid">
-          <input placeholder="Email *" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+          <input placeholder="Username * (e.g. kh)" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} autoCapitalize="none" autoCorrect="off" />
           <input placeholder="Password *" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
           <input placeholder="Full name" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} />
           <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
@@ -108,7 +110,7 @@ export default function UsersAdmin() {
           <button className="primary" disabled={busy} onClick={createUser}>{busy ? 'Creating…' : '+ Create user'}</button>
         </div>
         {msg && <div className={msg.startsWith('✓') ? 'notice' : 'error'} style={{ marginTop: 8 }}>{msg}</div>}
-        <p className="muted small" style={{ marginTop: 6 }}>Email can be real or a fake login like <code>name@restaurant.local</code>. Store-bound roles (orderer, store manager) need a location. Only kitchen manager &amp; admin see all locations.</p>
+        <p className="muted small" style={{ marginTop: 6 }}>Just type a <b>username</b> (e.g. <code>kh</code>) — they sign in with that. A full email also works if you prefer. Store-bound roles (orderer, store manager, bar staff) need a location.</p>
       </div>
 
       <h3 style={{ marginTop: 20 }}>Users ({rows.length})</h3>

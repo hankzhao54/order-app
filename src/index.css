@@ -631,3 +631,22 @@ body{ font-size:var(--fs); }
 .th-label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
 .th-info{font-size:11px;opacity:.45;cursor:help;font-weight:400}
 .th-info:hover{opacity:.9}
+
+/* catalog spec detail row */
+.specrow > td{background:var(--field);padding:14px 16px}
+.specgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.specgrid label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
+.specgrid .perunit{display:flex;gap:6px}
+.mini.on{border-color:var(--ember);color:var(--ember-ink,var(--ember));background:var(--ember-bg)}
+
+/* kitchen store-group fold */
+.storegroup{margin:10px 0 6px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);cursor:pointer}
+.storegroup.open{background:var(--field)}
+.storegroup:hover{border-color:var(--ember)}
+.sg-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.sg-name{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:15px}
+.sg-count{font-size:12px;font-weight:700;color:var(--ember-ink,var(--ember));background:var(--ember-bg);border-radius:999px;padding:2px 10px}
+.sg-summary{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.sg-chip{font-size:12px;background:var(--paper);border:1px solid var(--line);border-radius:999px;padding:2px 10px}
+.sg-chip b{font-family:'Bricolage Grotesque',sans-serif}
+.ticket-grouped{margin-left:14px;border-left:3px solid var(--line)}

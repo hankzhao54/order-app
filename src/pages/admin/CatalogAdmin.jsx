@@ -33,11 +33,15 @@ export default function CatalogAdmin() {
 
 function Items({ items, cats, reload }) {
   const [q, setQ] = useState('')
+  const [fCat, setFCat] = useState('')
+  const [fActive, setFActive] = useState('active')   // active | inactive | all
+  const [sortBy, setSortBy] = useState('name')        // name | category
   const [local, setLocal] = useState(items)
   useEffect(() => { setLocal(items) }, [items])
   const [add, setAdd] = useState({ name_en: '', name_hu: '', category_id: '', default_fulfillment: '', order_unit: '' })
   const [msg, setMsg] = useState('')
   const [priceFor, setPriceFor] = useState(null)
+  const [specFor, setSpecFor] = useState(null)
 
   function set(id, fields) { setLocal(p => p.map(x => x.id === id ? { ...x, ...fields } : x)) }
   async function patch(id, fields) {
@@ -60,7 +64,13 @@ function Items({ items, cats, reload }) {
   }
 
   const catName = id => cats.find(c => c.id === id)?.name_en || '—'
-  const filtered = local.filter(i => !q || `${i.name_en} ${i.name_hu || ''}`.toLowerCase().includes(q.toLowerCase()))
+  const filtered = local
+    .filter(i => !q || `${i.name_en} ${i.name_hu || ''}`.toLowerCase().includes(q.toLowerCase()))
+    .filter(i => !fCat || i.category_id === fCat)
+    .filter(i => fActive === 'all' || (fActive === 'active' ? i.is_active : !i.is_active))
+    .sort((a, b) => sortBy === 'category'
+      ? (catName(a.category_id).localeCompare(catName(b.category_id)) || a.name_en.localeCompare(b.name_en))
+      : a.name_en.localeCompare(b.name_en))
 
   return (
     <div>
@@ -81,26 +91,34 @@ function Items({ items, cats, reload }) {
       </div>
       {msg && <div className="error" style={{ marginBottom: 8 }}>{msg}</div>}
 
-      <div className="toolbar">
+      <div className="toolbar" style={{ flexWrap: 'wrap', gap: 8 }}>
         <input className="search" placeholder="Search items…" value={q} onChange={e => setQ(e.target.value)} />
+        <select value={fCat} onChange={e => setFCat(e.target.value)}>
+          <option value="">All categories</option>
+          {cats.map(c => <option key={c.id} value={c.id}>{c.name_en}</option>)}
+        </select>
+        <select value={fActive} onChange={e => setFActive(e.target.value)}>
+          <option value="active">Active only</option>
+          <option value="inactive">Inactive only</option>
+          <option value="all">All statuses</option>
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <option value="name">Sort: name</option>
+          <option value="category">Sort: category</option>
+        </select>
         <span className="muted">{filtered.length} items</span>
       </div>
 
       <table className="tbl">
         <thead><tr>
           <Th label="Name (EN)" hint="Item name in English. Shown to staff when ordering." />
-          <Th label="Name (HU)" hint="Item name in Hungarian. Shown as the secondary label." />
-          <Th label="Category" hint="Which group the item belongs to (e.g. Sauces, Drinks). Controls grouping on the order & inventory pages." />
-          <Th label="Default" hint="How this item is fulfilled by default: Make = produced by Central Kitchen; Buy = purchased from a supplier." />
-          <Th label="Unit" hint="Order unit — what stores order in (e.g. kg, bag, box). Shown on the ordering page next to quantity." />
-          <Th label="Batch" hint="Batch yield for Make items: how much one production batch makes (qty + unit). Reference for the kitchen. Leave blank for Buy items." />
-          <Th label="Stock unit" hint="Inventory unit — what stocktake & batches are counted in (e.g. bag, box). Usually the same as Order unit." />
-          <Th label="Per unit" hint="How much is in one unit: weight (g/kg) or count (pcs/db). e.g. 1 bag = 16 pcs → 16 + pcs. Used to auto-calc totals in inventory. Leave blank if not needed." />
-          <Th label="Shelf (d)" hint="Shelf life in days. When a batch is made/received, its expiry = production date + this many days. Blank = never expires." />
-          <Th label="Storage" hint="Default storage location label (e.g. fridge, freezer, dry store). Shared across all sites." />
-          <Th label="Low ≤" hint="Low-stock alert threshold. When stock at a site is at or below this number, it's flagged as low. Blank = alert at ≤1." />
-          <Th label="Price" hint="Supplier price history. Click to view/add prices per supplier (used for purchasing spend reports)." />
-          <Th label="Active" hint="Uncheck to hide this item from ordering and inventory without deleting it." />
+          <Th label="Name (HU)" hint="Item name in Hungarian. Secondary label." />
+          <Th label="Category" hint="Group the item belongs to. Controls grouping on order & inventory pages." />
+          <Th label="Default" hint="Make = produced by Central Kitchen; Buy = purchased from a supplier." />
+          <Th label="Unit" hint="Order unit — what stores order in (e.g. kg, bag, box)." />
+          <Th label="Specs" hint="Stock unit, per-unit content, shelf life, storage, low-stock threshold. Click ⚙ to expand." />
+          <Th label="Price" hint="Supplier price history (used for spend reports)." />
+          <Th label="Active" hint="Uncheck to hide from ordering & inventory without deleting." />
         </tr></thead>
         <tbody>
           {filtered.map(i => (
@@ -122,23 +140,34 @@ function Items({ items, cats, reload }) {
                 </select>
               </td>
               <td><input className="cell" value={i.order_unit || ''} onChange={e => set(i.id, { order_unit: e.target.value })} onBlur={e => patch(i.id, { order_unit: e.target.value || null })} /></td>
-              <td className="batchcell">
-                <input className="cell tiny" value={i.batch_yield_qty ?? ''} onChange={e => set(i.id, { batch_yield_qty: e.target.value })} onBlur={e => patch(i.id, { batch_yield_qty: e.target.value === '' ? null : Number(e.target.value) })} />
-                <input className="cell tiny" value={i.batch_yield_unit || ''} onChange={e => set(i.id, { batch_yield_unit: e.target.value })} onBlur={e => patch(i.id, { batch_yield_unit: e.target.value || null })} />
-              </td>
-              <td><input className="cell tiny" placeholder="bag…" value={i.stock_unit || ''} onChange={e => set(i.id, { stock_unit: e.target.value })} onBlur={e => patch(i.id, { stock_unit: e.target.value || null })} /></td>
-              <td className="batchcell">
-                <input className="cell tiny" placeholder="0" value={i.unit_weight ?? ''} onChange={e => set(i.id, { unit_weight: e.target.value })} onBlur={e => patch(i.id, { unit_weight: e.target.value === '' ? null : Number(e.target.value) })} />
-                <select className="cell tiny" value={i.weight_unit || 'g'} onChange={e => patch(i.id, { weight_unit: e.target.value })}><option value="g">g</option><option value="kg">kg</option><option value="pcs">pcs (db)</option></select>
-              </td>
-              <td><input className="cell tiny" placeholder="days" value={i.shelf_life_days ?? ''} onChange={e => set(i.id, { shelf_life_days: e.target.value })} onBlur={e => patch(i.id, { shelf_life_days: e.target.value === '' ? null : Number(e.target.value) })} /></td>
-              <td><input className="cell" placeholder="fridge…" value={i.storage_location || ''} onChange={e => set(i.id, { storage_location: e.target.value })} onBlur={e => patch(i.id, { storage_location: e.target.value || null })} /></td>
-              <td><input className="cell tiny" placeholder="≤" value={i.reorder_level ?? ''} onChange={e => set(i.id, { reorder_level: e.target.value })} onBlur={e => patch(i.id, { reorder_level: e.target.value === '' ? null : Number(e.target.value) })} /></td>
+              <td><button className={`mini ${specSet(i) ? 'on' : ''}`} onClick={() => setSpecFor(specFor === i.id ? null : i.id)}>⚙ {specFor === i.id ? '▾' : (specSet(i) ? 'set' : 'specs')}</button></td>
               <td><button className="mini" onClick={() => setPriceFor(priceFor === i.id ? null : i.id)}>💰 {priceFor === i.id ? '▾' : 'prices'}</button></td>
               <td><input type="checkbox" checked={i.is_active} onChange={e => patch(i.id, { is_active: e.target.checked })} /></td>
             </tr>
+            {specFor === i.id && (
+              <tr className="specrow"><td colSpan={8}>
+                <div className="specgrid">
+                  <label>Stock unit<input className="cell" placeholder="bag…" value={i.stock_unit || ''} onChange={e => set(i.id, { stock_unit: e.target.value })} onBlur={e => patch(i.id, { stock_unit: e.target.value || null })} /></label>
+                  <label>Per unit
+                    <span className="perunit">
+                      <input className="cell tiny" placeholder="0" value={i.unit_weight ?? ''} onChange={e => set(i.id, { unit_weight: e.target.value })} onBlur={e => patch(i.id, { unit_weight: e.target.value === '' ? null : Number(e.target.value) })} />
+                      <select className="cell tiny" value={i.weight_unit || 'g'} onChange={e => patch(i.id, { weight_unit: e.target.value })}><option value="g">g</option><option value="kg">kg</option><option value="pcs">pcs (db)</option></select>
+                    </span>
+                  </label>
+                  <label>Batch yield
+                    <span className="perunit">
+                      <input className="cell tiny" value={i.batch_yield_qty ?? ''} onChange={e => set(i.id, { batch_yield_qty: e.target.value })} onBlur={e => patch(i.id, { batch_yield_qty: e.target.value === '' ? null : Number(e.target.value) })} />
+                      <input className="cell tiny" placeholder="unit" value={i.batch_yield_unit || ''} onChange={e => set(i.id, { batch_yield_unit: e.target.value })} onBlur={e => patch(i.id, { batch_yield_unit: e.target.value || null })} />
+                    </span>
+                  </label>
+                  <label>Shelf life (days)<input className="cell tiny" placeholder="days" value={i.shelf_life_days ?? ''} onChange={e => set(i.id, { shelf_life_days: e.target.value })} onBlur={e => patch(i.id, { shelf_life_days: e.target.value === '' ? null : Number(e.target.value) })} /></label>
+                  <label>Storage<input className="cell" placeholder="fridge…" value={i.storage_location || ''} onChange={e => set(i.id, { storage_location: e.target.value })} onBlur={e => patch(i.id, { storage_location: e.target.value || null })} /></label>
+                  <label>Low-stock ≤<input className="cell tiny" placeholder="≤" value={i.reorder_level ?? ''} onChange={e => set(i.id, { reorder_level: e.target.value })} onBlur={e => patch(i.id, { reorder_level: e.target.value === '' ? null : Number(e.target.value) })} /></label>
+                </div>
+              </td></tr>
+            )}
             {priceFor === i.id && (
-              <tr className="pricerow"><td colSpan={13}><PricePanel item={i} /></td></tr>
+              <tr className="pricerow"><td colSpan={8}><PricePanel item={i} /></td></tr>
             )}
             </Fragment>
           ))}
@@ -278,6 +307,10 @@ function PricePanel({ item }) {
       )}
     </div>
   )
+}
+
+function specSet(i) {
+  return !!(i.stock_unit || i.unit_weight != null || i.shelf_life_days != null || i.storage_location || i.reorder_level != null || i.batch_yield_qty != null)
 }
 
 function Th({ label, hint }) {

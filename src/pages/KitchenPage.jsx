@@ -23,6 +23,7 @@ export default function KitchenPage() {
   const [procureFor, setProcureFor] = useState(null)  // { item, order } awaiting target store
   const [stock, setStock] = useState({})              // catalog_item_id -> qty
   const [centralId, setCentralId] = useState(null)
+  const [expanded, setExpanded] = useState({})   // groupKey -> bool (override default fold)
 
   async function load() {
     setLoading(true)
@@ -216,9 +217,20 @@ export default function KitchenPage() {
           return 2
         }
         const BLABEL = { 0: '🔥 Urgent — handle now', 1: "📅 This week's production", 2: '📅 Next week' }
+        const gkey = o => bucketOf(o) + '|' + (o.location?.name_en || '—')
         const list = orders.filter(o => showCompleted ? o.status === 'completed' : o.status !== 'completed')
-          .slice().sort((a, b) => bucketOf(a) - bucketOf(b) || new Date(a.created_at) - new Date(b.created_at))
-        let lastB = null
+          .slice().sort((a, b) =>
+            bucketOf(a) - bucketOf(b) ||
+            (a.location?.name_en || '').localeCompare(b.location?.name_en || '') ||
+            new Date(a.created_at) - new Date(b.created_at))
+        const meta = {}
+        for (const o of list) {
+          const kk = gkey(o)
+          if (!meta[kk]) meta[kk] = { count: 0, items: {}, loc: o.location?.name_en || '—' }
+          meta[kk].count++
+          for (const it of o.items) meta[kk].items[it.item_name_snapshot] = (meta[kk].items[it.item_name_snapshot] || 0) + Number(it.quantity)
+        }
+        let lastB = null, lastK = null
         return list.map(o => {
         const isDone = o.status === 'completed'
         const handled = o.items.filter(i => i.dispatch_status !== 'pending').length
@@ -227,10 +239,28 @@ export default function KitchenPage() {
         const pend = n('pending'), rdy = n('ready'), sh = n('short'), un = n('unavailable'), dis = n('dispatched')
         const proc = n('procuring')
         const b = bucketOf(o); const sep = b !== lastB ? (lastB = b, BLABEL[b]) : null
+        const k = gkey(o); const m = meta[k]
+        const newGroup = k !== lastK; if (newGroup) lastK = k
+        const multi = m.count >= 2
+        const isOpen = expanded[k] ?? !multi
         return (
           <div key={o.id}>
             {sep && <div className="prodsep">{sep}</div>}
-          <div className={`ticket${isDone ? ' ticket-done' : ''}`}>
+            {newGroup && multi && (
+              <div className={`storegroup ${isOpen ? 'open' : ''}`} onClick={() => setExpanded(e => ({ ...e, [k]: !isOpen }))}>
+                <div className="sg-head">
+                  <span className="sg-name">{isOpen ? '▾' : '▸'} {m.loc}</span>
+                  <span className="sg-count">{m.count} orders</span>
+                </div>
+                {!isOpen && (
+                  <div className="sg-summary">
+                    {Object.entries(m.items).map(([nm, qty]) => <span key={nm} className="sg-chip">{nm} <b>×{qty}</b></span>)}
+                  </div>
+                )}
+              </div>
+            )}
+            {isOpen && (
+          <div className={`ticket${isDone ? ' ticket-done' : ''}${multi ? ' ticket-grouped' : ''}`}>
             <div className="tickethead">
               <div>
                 <b>{o.location?.name_en}</b>
@@ -370,6 +400,7 @@ export default function KitchenPage() {
               )}
             </div>
           </div>
+          )}
           </div>
         )
       })
