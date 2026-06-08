@@ -10,6 +10,8 @@ import { loadCutoff, productionWeek, cutoffLabel } from '../lib/cutoff'
 export default function OrderingPage() {
   const { locationId, isStaff, profile } = useAuth()
   const [cutoff, setCutoff] = useState(null)
+  const [eventName, setEventName] = useState('')
+  const [eventDate, setEventDate] = useState('')
   const [locations, setLocations] = useState([])
   const [locId, setLocId] = useState(locationId || '')
   const [cats, setCats] = useState([])
@@ -84,9 +86,9 @@ export default function OrderingPage() {
     if (totalLines === 0) { setMsg('Cart is empty.'); return }
     setBusy(true); setMsg('')
     try {
-      const res = await submitOrder({ locationId: locId, orderType, lines, adhoc, parentOrderId: amending?.id, productionWeek: orderType === 'weekly' ? prodWeek : null })
+      const res = await submitOrder({ locationId: locId, orderType, lines, adhoc, parentOrderId: amending?.id, productionWeek: orderType === 'weekly' ? prodWeek : null, eventName: orderType === 'event' ? (eventName.trim() || null) : null, eventDate: orderType === 'event' ? (eventDate || null) : null })
       const n = res?.count ?? res
-      setCart({}); setAdhoc([])
+      setCart({}); setAdhoc([]); setEventName(''); setEventDate('')
       setMsg(amending
         ? `✓ Top-up submitted for ${amending.label} — ${n} item(s).`
         : res?.merged
@@ -240,10 +242,19 @@ export default function OrderingPage() {
             {orderType === 'urgent' && (
               <div className="cutoff-banner locked">🔥 Urgent order — handled right away, not tied to a production week.</div>
             )}
+            {orderType === 'event' && (
+              <div className="cutoff-banner event">🎉 Event order — handled separately from weekly production.</div>
+            )}
             <div className="seg">
-              {['weekly', 'urgent'].map(t =>
+              {['weekly', 'urgent', 'event'].map(t =>
                 <button key={t} className={orderType === t ? 'on' : ''} onClick={() => setOrderType(t)}>{t}</button>)}
             </div>
+            {orderType === 'event' && (
+              <div className="eventfields">
+                <input placeholder="Event name (optional)" value={eventName} onChange={e => setEventName(e.target.value)} />
+                <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} />
+              </div>
+            )}
             <div className="cartlist">
               {lines.length === 0 && adhoc.length === 0 && <p className="muted">Cart is empty.</p>}
               {lines.map(l => (

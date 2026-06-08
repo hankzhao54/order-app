@@ -44,7 +44,7 @@ async function findMergeTarget(locationId, productionWeek) {
   return null
 }
 
-export async function submitOrder({ locationId, orderType, lines, adhoc, parentOrderId, productionWeek }) {
+export async function submitOrder({ locationId, orderType, lines, adhoc, parentOrderId, productionWeek, eventName, eventDate }) {
   const finalType = parentOrderId ? 'urgent' : orderType
 
   // weekly orders (not top-ups) merge into an existing untouched order for the same production week
@@ -78,7 +78,9 @@ export async function submitOrder({ locationId, orderType, lines, adhoc, parentO
       status: 'submitted',
       submitted_at: new Date().toISOString(),
       parent_order_id: parentOrderId || null,
-      production_week: finalType === 'weekly' ? (productionWeek || null) : null
+      production_week: finalType === 'weekly' ? (productionWeek || null) : null,
+      event_name: finalType === 'event' ? (eventName || null) : null,
+      event_date: finalType === 'event' ? (eventDate || null) : null
     })
     .select('id').single()
   if (error) throw error

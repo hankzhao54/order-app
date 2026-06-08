@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
 import { thisMonday } from '../lib/cutoff'
 
-const SELECT = `id, order_type, status, created_at, parent_order_id, production_week,
+const SELECT = `id, order_type, status, created_at, parent_order_id, production_week, event_name, event_date,
   location:locations(name_en),
   items:order_items(id, catalog_item_id, item_name_snapshot, unit_snapshot, quantity, fulfillment_type,
                     dispatch_status, fulfilled_qty, unavail_reason)`
@@ -212,11 +212,12 @@ export default function KitchenPage() {
         const tm = thisMonday()
         const bucketOf = o => {
           if (o.order_type === 'urgent' || o.parent_order_id) return 0
+          if (o.order_type === 'event') return 1
           const pw = o.production_week
-          if (!pw || pw <= tm) return 1
-          return 2
+          if (!pw || pw <= tm) return 2
+          return 3
         }
-        const BLABEL = { 0: '🔥 Urgent — handle now', 1: "📅 This week's production", 2: '📅 Next week' }
+        const BLABEL = { 0: '🔥 Urgent — handle now', 1: '🎉 Event orders', 2: "📅 This week's production", 3: '📅 Next week' }
         const gkey = o => bucketOf(o) + '|' + (o.location?.name_en || '—')
         const list = orders.filter(o => showCompleted ? o.status === 'completed' : o.status !== 'completed')
           .slice().sort((a, b) =>
@@ -265,6 +266,9 @@ export default function KitchenPage() {
               <div>
                 <b>{o.location?.name_en}</b>
                 <span className={`tag ${o.order_type}`}>{o.order_type}</span>
+                {o.order_type === 'event' && (o.event_name || o.event_date) && (
+                  <span className="tag event">🎉 {o.event_name || 'Event'}{o.event_date ? ` · ${o.event_date}` : ''}</span>
+                )}
                 {o.parent_order_id && <span className="tag amend">🔁 amendment</span>}
                 {isDone && <span className="tag st-completed">✓ completed</span>}
               </div>
