@@ -59,6 +59,16 @@ Deno.serve(async (req) => {
       return json({ ok: true })
     }
 
+    if (action === 'delete') {
+      const { user_id } = body
+      if (!user_id) return json({ error: 'user_id required' }, 400)
+      if (user_id === u.user.id) return json({ error: 'You cannot delete your own account.' }, 400)
+      await admin.from('profiles').delete().eq('user_id', user_id)
+      const { error: dErr } = await admin.auth.admin.deleteUser(user_id)
+      if (dErr) return json({ error: dErr.message }, 400)
+      return json({ ok: true })
+    }
+
     return json({ error: 'unknown action' }, 400)
   } catch (e) {
     return json({ error: String(e?.message ?? e) }, 500)

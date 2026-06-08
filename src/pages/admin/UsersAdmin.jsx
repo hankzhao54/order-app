@@ -16,7 +16,7 @@ const STORE_BOUND = ['restaurant_orderer', 'store_manager', 'bar_staff']
 export default function UsersAdmin() {
   const [rows, setRows] = useState([])
   const [locs, setLocs] = useState([])
-  const [form, setForm] = useState({ email: '', password: '', full_name: '', role: 'restaurant_orderer', location_id: '' })
+  const [form, setForm] = useState({ email: '', password: '', role: 'restaurant_orderer', location_id: '' })
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
   const [pwFor, setPwFor] = useState(null)   // user row for password modal
@@ -66,6 +66,15 @@ export default function UsersAdmin() {
     setMsg(`✓ ${next ? 'Enabled' : 'Disabled'} ${u.full_name || 'user'}.`)
   }
 
+  async function deleteUser(u) {
+    const label = u.full_name || u.user_id.slice(0, 8)
+    if (!confirm(`Permanently delete user "${label}"? This removes their login for good and cannot be undone. (To keep records, use Disable instead.)`)) return
+    const { data, error } = await callFn({ action: 'delete', user_id: u.user_id })
+    if (error || data?.error) { setMsg('Error: ' + (data?.error || error.message)); return }
+    setRows(p => p.filter(x => x.user_id !== u.user_id))
+    setMsg(`✓ Deleted ${label}.`)
+  }
+
   async function savePassword() {
     if (pwVal.length < 6) { setMsg('Password must be at least 6 characters.'); return }
     const { data, error } = await callFn({ action: 'set_password', user_id: pwFor.user_id, password: pwVal })
@@ -81,14 +90,15 @@ export default function UsersAdmin() {
     if (STORE_BOUND.includes(form.role) && !form.location_id) { setMsg('This role must have a location.'); return }
     setBusy(true)
     const loginEmail = toLoginEmail(form.email)
+    const displayName = form.email.trim().split('@')[0]   // username becomes the display name
     const { data, error } = await callFn({
       email: loginEmail, password: form.password,
-      full_name: form.full_name.trim() || null, role: form.role, location_id: form.location_id || null
+      full_name: displayName || null, role: form.role, location_id: form.location_id || null
     })
     setBusy(false)
     if (error || data?.error) { setMsg('Error: ' + (data?.error || error.message)); return }
     setMsg(`✓ Created ${loginEmail}.`)
-    setForm({ email: '', password: '', full_name: '', role: 'restaurant_orderer', location_id: '' })
+    setForm({ email: '', password: '', role: 'restaurant_orderer', location_id: '' })
     load()
   }
 
@@ -99,7 +109,6 @@ export default function UsersAdmin() {
         <div className="adduser-grid">
           <input placeholder="Username * (e.g. kh)" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} autoCapitalize="none" autoCorrect="off" />
           <input placeholder="Password *" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
-          <input placeholder="Full name" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} />
           <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
             {ROLES.map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
           </select>
@@ -137,6 +146,7 @@ export default function UsersAdmin() {
                 <td className="user-actions">
                   <button className="mini" onClick={() => { setPwFor(u); setPwVal(''); setMsg('') }}>Password</button>
                   <button className={`mini ${active ? 'danger' : 'ok'}`} onClick={() => toggleActive(u)}>{active ? 'Disable' : 'Enable'}</button>
+                  <button className="mini danger" onClick={() => deleteUser(u)}>Delete</button>
                 </td>
               </tr>
             )
