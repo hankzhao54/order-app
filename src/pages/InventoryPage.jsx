@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthProvider'
+import { downloadCSV, today } from '../lib/csv'
 
 const DAY = 86400000
 function expiryState(expires_on) {
@@ -445,9 +446,21 @@ function Overview({ locs, catMap }) {
 
   return (
     <div>
-      <div className="seg" style={{ marginBottom: 12 }}>
-        <button className={mode === 'item' ? 'on' : ''} onClick={() => setMode('item')}>By item</button>
-        <button className={mode === 'site' ? 'on' : ''} onClick={() => setMode('site')}>By site</button>
+      <div className="seg" style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+        <span style={{ display: 'inline-flex' }}>
+          <button className={mode === 'item' ? 'on' : ''} onClick={() => setMode('item')}>By item</button>
+          <button className={mode === 'site' ? 'on' : ''} onClick={() => setMode('site')}>By site</button>
+        </span>
+        <button className="ghost" onClick={() => {
+          const locName = Object.fromEntries(locs.map(l => [l.id, l.name_en]))
+          const rows = data.map(r => ({
+            item: catMap[r.catalog_item_id]?.name_en, item_hu: catMap[r.catalog_item_id]?.name_hu,
+            loc: locName[r.location_id] || '', qty: Number(r.qty), unit: catMap[r.catalog_item_id]?.stock_unit || ''
+          })).filter(r => r.item).sort((a, b) => a.loc.localeCompare(b.loc) || a.item.localeCompare(b.item))
+          downloadCSV(`inventory-snapshot-${today()}`,
+            [{ label: 'Location', key: 'loc' }, { label: 'Item (EN)', key: 'item' }, { label: 'Item (HU)', key: 'item_hu' }, { label: 'Qty', key: 'qty' }, { label: 'Unit', key: 'unit' }],
+            rows)
+        }}>⬇ Export CSV</button>
       </div>
       {mode === 'item' ? byItem() : bySite()}
     </div>

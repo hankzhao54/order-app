@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { downloadCSV, today } from '../lib/csv'
 
 const HUF = n => new Intl.NumberFormat('hu-HU', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' Ft'
 function rangeStart(kind) {
@@ -79,11 +80,21 @@ function Spend() {
 
   return (
     <div>
-      <div className="toolbar"><div className="seg">
-        <button className={range === 'week' ? 'on' : ''} onClick={() => setRange('week')}>This week</button>
-        <button className={range === 'month' ? 'on' : ''} onClick={() => setRange('month')}>This month</button>
-        <button className={range === 'all' ? 'on' : ''} onClick={() => setRange('all')}>All time</button>
-      </div></div>
+      <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+        <div className="seg">
+          <button className={range === 'week' ? 'on' : ''} onClick={() => setRange('week')}>This week</button>
+          <button className={range === 'month' ? 'on' : ''} onClick={() => setRange('month')}>This month</button>
+          <button className={range === 'all' ? 'on' : ''} onClick={() => setRange('all')}>All time</button>
+        </div>
+        <button className="ghost" disabled={!current.length} onClick={() => downloadCSV(
+          `purchasing-spend-${view}-${range}-${today()}`,
+          [{ label: view === 'item' ? 'Item' : view === 'supplier' ? 'Supplier' : 'Store', key: 'label' },
+           { label: 'Qty', key: 'qty' },
+           { label: 'Spend (HUF)', value: r => Math.round(r.cost) },
+           { label: 'Share %', value: r => total > 0 ? Math.round(r.cost / total * 100) : 0 }],
+          current
+        )}>⬇ Export CSV</button>
+      </div>
       <div className="stats" style={{ marginTop: 12 }}>
         <div className="statcard"><div className="statn">{HUF(total)}</div><div className="statl">Total purchasing spend</div></div>
         <div className="statcard"><div className="statn">{rows.length}</div><div className="statl">Items bought</div></div>
@@ -161,6 +172,15 @@ function StockLog() {
         <input className="search" placeholder="Search item…" value={q} onChange={e => setQ(e.target.value)} style={{ maxWidth: 180 }} />
         <select value={fReason} onChange={e => setFReason(e.target.value)}><option value="">All reasons</option>{Object.entries(REASONS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
         <select value={fLoc} onChange={e => setFLoc(e.target.value)}><option value="">All locations</option>{Object.entries(locs).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        <button className="ghost" disabled={!filtered.length} onClick={() => downloadCSV(
+          `stock-log-${range}-${today()}`,
+          [{ label: 'When', value: m => new Date(m.created_at).toLocaleString() },
+           { label: 'Item', value: m => cat[m.catalog_item_id] || '' },
+           { label: 'Location', value: m => locs[m.location_id] || '' },
+           { label: 'Reason', value: m => (REASONS[m.reason]?.label || m.reason) },
+           { label: 'Change', value: m => Number(m.delta) }],
+          filtered
+        )}>⬇ Export CSV</button>
       </div>
       <div className="stats" style={{ marginTop: 12 }}>
         <div className="statcard bad"><div className="statn">{HUF(scrapLoss)}</div><div className="statl">Scrap / waste loss</div></div>
