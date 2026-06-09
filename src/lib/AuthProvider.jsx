@@ -24,25 +24,25 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let done = false
     const finish = () => { if (!done) { done = true; setLoading(false) } }
-    // hard fallback: never hang on the splash loader
     const t = setTimeout(finish, 2500)
 
-    ;(async () => {
-      try {
-        const { data } = await supabase.auth.getSession()
-        setSession(data.session)
-        await loadProfile(data.session?.user?.id)
-      } catch { /* ignore */ }
-      finally { clearTimeout(t); finish() }
-    })()
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+    }).catch(() => {}).finally(() => { clearTimeout(t); finish() })
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
+    // IMPORTANT: keep this callback synchronous. Awaiting supabase queries
+    // (e.g. loading the profile) inside onAuthStateChange can deadlock the
+    // auth client and leave the UI stale until a manual refresh.
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
-      await loadProfile(s?.user?.id)
       finish()
     })
     return () => { clearTimeout(t); sub.subscription.unsubscribe() }
   }, [])
+
+  // Load the profile whenever the signed-in user changes (outside the auth callback).
+  const userId = session?.user?.id ?? null
+  useEffect(() => { loadProfile(userId) }, [userId])
 
   const value = {
     session,

@@ -10,7 +10,7 @@ export default function CatalogAdmin() {
   async function load() {
     setLoading(true)
     const [{ data: it }, { data: c }] = await Promise.all([
-      supabase.from('catalog_items').select('id,name_en,name_hu,order_unit,default_fulfillment,is_active,category_id,batch_yield_qty,batch_yield_unit,stock_unit,unit_weight,weight_unit,shelf_life_days,storage_location,reorder_level').order('name_en'),
+      supabase.from('catalog_items').select('id,name_en,name_hu,order_unit,default_fulfillment,is_active,category_id,batch_yield_qty,batch_yield_unit,stock_unit,unit_weight,weight_unit,shelf_life_days,storage_location,reorder_level,vacuum_level').order('name_en'),
       supabase.from('categories').select('id,name_en,name_hu,sort_order,is_active').order('sort_order')
     ])
     setItems(it || []); setCats(c || []); setLoading(false)
@@ -163,6 +163,7 @@ function Items({ items, cats, reload }) {
                   <label>Shelf life (days)<input className="cell tiny" placeholder="days" value={i.shelf_life_days ?? ''} onChange={e => set(i.id, { shelf_life_days: e.target.value })} onBlur={e => patch(i.id, { shelf_life_days: e.target.value === '' ? null : Number(e.target.value) })} /></label>
                   <label>Storage<input className="cell" placeholder="fridge…" value={i.storage_location || ''} onChange={e => set(i.id, { storage_location: e.target.value })} onBlur={e => patch(i.id, { storage_location: e.target.value || null })} /></label>
                   <label>Low-stock ≤<input className="cell tiny" placeholder="≤" value={i.reorder_level ?? ''} onChange={e => set(i.id, { reorder_level: e.target.value })} onBlur={e => patch(i.id, { reorder_level: e.target.value === '' ? null : Number(e.target.value) })} /></label>
+                  <label>Vacuum level<input className="cell tiny" placeholder="P0–P7" value={i.vacuum_level || ''} onChange={e => set(i.id, { vacuum_level: e.target.value })} onBlur={e => patch(i.id, { vacuum_level: e.target.value || null })} /></label>
                 </div>
               </td></tr>
             )}
