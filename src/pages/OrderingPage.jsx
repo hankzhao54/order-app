@@ -6,6 +6,7 @@ import {
   loadTemplates, saveTemplate, loadHistory
 } from '../lib/orderData'
 import { loadCutoff, productionWeek, cutoffLabel } from '../lib/cutoff'
+import { SkeletonRows } from '../components/Skeleton'
 
 export default function OrderingPage() {
   const { locationId, isStaff, profile } = useAuth()
@@ -27,6 +28,7 @@ export default function OrderingPage() {
   const [history, setHistory] = useState([])
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [catLoading, setCatLoading] = useState(true)
   const [amending, setAmending] = useState(null)   // { id, label } when adding to a locked order
 
   useEffect(() => { loadCutoff().then(setCutoff) }, [])
@@ -41,7 +43,8 @@ export default function OrderingPage() {
 
   useEffect(() => {
     if (!locId) return
-    loadCatalog(locId).then(({ cats, items, favs }) => { setCats(cats); setItems(items); setFavs(favs) })
+    setCatLoading(true)
+    loadCatalog(locId).then(({ cats, items, favs }) => { setCats(cats); setItems(items); setFavs(favs) }).finally(() => setCatLoading(false))
     loadTemplates(locId).then(setTemplates)
   }, [locId])
 
@@ -185,7 +188,9 @@ export default function OrderingPage() {
             )}
             <input className="search" placeholder="Search all items…" value={q} onChange={e => setQ(e.target.value)} />
 
-            {search ? (
+            {catLoading && items.length === 0 ? (
+              <div className="catitems"><SkeletonRows count={7} /></div>
+            ) : search ? (
               <div className="catdrawer openalways">
                 <div className="cathdr static">Search results ({searchHits.length})</div>
                 <div className="catitems">{searchHits.map(it => <ItemRow key={it.id} it={it} />)}</div>

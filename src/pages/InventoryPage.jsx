@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthProvider'
 import { downloadCSV, today } from '../lib/csv'
+import { SkeletonRows } from '../components/Skeleton'
 
 const DAY = 86400000
 function expiryState(expires_on) {
@@ -259,7 +260,7 @@ function Stocktake(p) {
         </div>
       )}
 
-      {loading ? <div className="center muted">Loading…</div>
+      {loading ? <SkeletonRows count={8} />
         : items.length === 0 ? <div className="center muted">No items in {locName}'s list yet. Tap “➕ Add items”.</div>
         : groups.map(([g, list]) => (
           <div className="invgroup" key={g}>

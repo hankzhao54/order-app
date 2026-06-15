@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
 import { thisMonday } from '../lib/cutoff'
+import { SkeletonCards } from '../components/Skeleton'
 
 const SELECT = `id, order_type, status, created_at, parent_order_id, production_week, event_name, event_date,
   location:locations(name_en),
@@ -175,7 +176,7 @@ export default function KitchenPage() {
     if (next) loadCancelled()
   }
 
-  if (loading) return <div className="center muted">Loading…</div>
+  if (loading) return <div className="tickets"><SkeletonCards count={5} /></div>
 
   return (
     <div className="tickets">

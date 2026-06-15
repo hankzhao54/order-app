@@ -669,3 +669,12 @@ body{ font-size:var(--fs); }
 /* help nav link */
 .navlink.help{opacity:.85}
 .navlink.help:hover{opacity:1;color:var(--ember)}
+
+/* loading skeletons */
+@keyframes skelpulse{0%{opacity:.55}50%{opacity:1}100%{opacity:.55}}
+.skel-line,.skel-pill{background:linear-gradient(90deg,var(--line),#efeae0,var(--line));border-radius:6px;height:13px;animation:skelpulse 1.3s ease-in-out infinite}
+.skel-pill{height:24px;width:60px;border-radius:999px}
+.skel-line.w40{width:40%}.skel-line.w60{width:60%}.skel-line.w70{width:70%}.skel-line.w80{width:80%}
+.skel-list .skel-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 4px;border-bottom:1px solid var(--line)}
+.skel-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:10px 0;display:flex;flex-direction:column;gap:10px}
