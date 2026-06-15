@@ -74,20 +74,14 @@ export default function Dashboard() {
     <div className={`statcard ${tone || ''}`}><div className="statn">{n}</div><div className="statl">{label}</div></div>
   )
 
+  const hasAttention = notOrdered.length > 0 || shortItems.length > 0 || lowList.length > 0 || expList.length > 0 || expiredList.length > 0 || soonList.length > 0
+
   return (
     <div className="dashboard">
-      <h2 className="dash-title">This week at a glance</h2>
-      <CutoffSetting />
-      <div className="statgrid">
-        <Stat n={orders.length} label="Open orders" />
-        <Stat n={pending} label="Items to handle" tone={pending ? 'warn' : ''} />
-        <Stat n={readyToDispatch} label="Ready to dispatch" tone={readyToDispatch ? 'ok' : ''} />
-        <Stat n={toBuy} label="On buy list" tone={toBuy ? 'buy' : ''} />
-        <Stat n={shortItems.length} label="Unavailable" tone={shortItems.length ? 'bad' : ''} />
-        <Stat n={avgLabel} label="Avg completion time" />
-      </div>
+      <h2 className="dash-title">Today at a glance</h2>
 
-      {(notOrdered.length > 0 || shortItems.length > 0 || lowList.length > 0 || expList.length > 0) && (
+      {/* 1) What needs action — first thing every morning */}
+      {hasAttention ? (
         <div className="attention">
           <div className="att-h">⚠️ Needs attention</div>
           {expiredList.length > 0 && (
@@ -125,8 +119,21 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      ) : (
+        <div className="allclear">✓ All clear — nothing needs attention right now.</div>
       )}
 
+      {/* 2) The numbers — pipeline at a glance (action stats first) */}
+      <div className="statgrid">
+        <Stat n={pending} label="Items to handle" tone={pending ? 'warn' : ''} />
+        <Stat n={readyToDispatch} label="Ready to dispatch" tone={readyToDispatch ? 'ok' : ''} />
+        <Stat n={toBuy} label="On buy list" tone={toBuy ? 'buy' : ''} />
+        <Stat n={shortItems.length} label="Unavailable" tone={shortItems.length ? 'bad' : ''} />
+        <Stat n={orders.length} label="Open orders" />
+        <Stat n={avgLabel} label="Avg completion time" />
+      </div>
+
+      {/* 3) Per-store progress */}
       <div className="dash-stores card">
         <div className="prodsec-h">By store</div>
         {perStore.length === 0 && <p className="muted small">No active stores.</p>}
@@ -140,6 +147,7 @@ export default function Dashboard() {
         ))}
       </div>
 
+      {/* 4) Jump to work areas */}
       <div className="dash-links">
         <Link className="dlink" to="/kitchen">🍳 Kitchen</Link>
         <Link className="dlink" to="/dispatch">📦 Dispatch</Link>
@@ -147,6 +155,12 @@ export default function Dashboard() {
         <Link className="dlink" to="/admin/catalog">📋 Catalog</Link>
         <Link className="dlink" to="/history">🗓 History</Link>
       </div>
+
+      {/* 5) Settings — secondary, lives at the bottom */}
+      <details className="dash-settings">
+        <summary>⚙ Settings — weekly order cutoff</summary>
+        <CutoffSetting />
+      </details>
     </div>
   )
 }

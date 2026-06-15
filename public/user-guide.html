@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ordering &amp; Distribution — User Guide</title>
+<style>
+  :root{
+    --paper:#F8F5EF; --ink:#1C1A15; --muted:#6b665c; --line:#e4ded2;
+    --ember:#DC5326; --ember-bg:#fbe9e0; --card:#fff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:-apple-system,"Hanken Grotesk",Segoe UI,Roboto,sans-serif;line-height:1.6;font-size:16px}
+  .wrap{max-width:860px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--ember);padding-bottom:16px;margin-bottom:8px}
+  h1{font-family:"Bricolage Grotesque",sans-serif;font-size:30px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px}
+  .ver{font-size:13px;color:var(--muted);margin-top:6px}
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:20px 0 28px}
+  nav.toc b{font-family:"Bricolage Grotesque",sans-serif}
+  nav.toc a{display:inline-block;margin:4px 14px 4px 0;color:var(--ember);text-decoration:none;font-weight:600}
+  nav.toc a:hover{text-decoration:underline}
+  h2{font-family:"Bricolage Grotesque",sans-serif;font-size:23px;margin:38px 0 10px;
+    border-bottom:2px solid var(--line);padding-bottom:6px}
+  .role-badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;
+    padding:2px 12px;background:var(--ember-bg);color:var(--ember);vertical-align:middle;margin-left:8px}
+  h3{font-family:"Bricolage Grotesque",sans-serif;font-size:18px;margin:22px 0 6px}
+  ol,ul{margin:8px 0 8px 4px;padding-left:22px}
+  li{margin:4px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:14px 0}
+  .tip{border-left:4px solid var(--ember);background:var(--ember-bg);border-radius:8px;padding:10px 14px;margin:14px 0;font-size:15px}
+  .warn{border-left:4px solid #b4541f;background:#fdeee6;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:15px}
+  code{background:#efe9dd;padding:1px 6px;border-radius:5px;font-size:14px}
+  kbd{background:var(--ink);color:#fff;border-radius:5px;padding:1px 7px;font-size:13px;font-weight:600}
+  .pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:13px;margin:0 2px}
+  footer{margin-top:48px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:13px}
+  figure{margin:18px 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center}
+  figure svg{max-width:100%;height:auto}
+  figcaption{color:var(--muted);font-size:13px;margin-top:8px}
+  @media print{
+    body{background:#fff} .wrap{max-width:100%} nav.toc{break-inside:avoid}
+    h2{break-after:avoid} a{color:var(--ink);text-decoration:none}
+    figure{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Ordering &amp; Distribution — User Guide</h1>
+  <div class="sub">How to use the system, by role.</div>
+  <div class="ver">Version 1.1 · Last updated: 16 June 2026 &nbsp;·&nbsp; <a href="/user-guide-hu.html" style="color:#DC5326">Magyar verzió →</a></div>
+</header>
+
+<nav class="toc">
+  <b>Contents</b><br>
+  <a href="#start">Getting started</a>
+  <a href="#store">Store staff</a>
+  <a href="#kitchen">Kitchen</a>
+  <a href="#inventory">Inventory &amp; stocktake</a>
+  <a href="#driver">Driver / dispatch</a>
+  <a href="#admin">Admin</a>
+  <a href="#faq">Troubleshooting</a>
+</nav>
+
+<!-- ============ GETTING STARTED ============ -->
+<h2 id="start">Getting started</h2>
+<h3>Signing in</h3>
+<ol>
+  <li>Open the app link on your phone or computer. On a phone you can “Add to Home Screen” to use it like an app.</li>
+  <li>Enter your <b>username</b> (for example <code>kh</code>) and your password.</li>
+  <li>Tap <kbd>Sign in</kbd>. You’ll land on the page for your role automatically.</li>
+</ol>
+<div class="tip">You only type your username — no email needed. If your account uses a real email, type the full email instead. Accounts and passwords are set up by an admin.</div>
+
+<h3>What you can see</h3>
+<p>The menu only shows what your role needs. A store orderer sees ordering; the kitchen sees production; an admin sees everything. If something’s missing, your role may need changing — ask an admin.</p>
+
+<figure>
+<svg viewBox="0 0 820 250" xmlns="http://www.w3.org/2000/svg" font-family="Hanken Grotesk,sans-serif">
+  <g font-size="12.5">
+    <!-- header -->
+    <text x="150" y="28" font-weight="700" font-size="13">Role</text>
+    <text x="330" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Order</text>
+    <text x="420" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Kitchen</text>
+    <text x="515" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Dispatch</text>
+    <text x="610" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Inventory</text>
+    <text x="715" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Admin</text>
+    <line x1="20" y1="38" x2="800" y2="38" stroke="#e4ded2"/>
+    <!-- rows -->
+    <g text-anchor="middle">
+      <!-- Orderer -->
+      <text x="30" y="66" text-anchor="start">Orderer / Store mgr</text>
+      <text x="330" y="66" fill="#2e7d32">✓</text><text x="420" y="66" fill="#ccc">·</text><text x="515" y="66" fill="#ccc">·</text><text x="610" y="66" fill="#2e7d32">own</text><text x="715" y="66" fill="#ccc">·</text>
+      <line x1="20" y1="78" x2="800" y2="78" stroke="#f0ebe0"/>
+      <!-- Bar -->
+      <text x="30" y="104" text-anchor="start">Bar staff</text>
+      <text x="330" y="104" fill="#ccc">·</text><text x="420" y="104" fill="#ccc">·</text><text x="515" y="104" fill="#ccc">·</text><text x="610" y="104" fill="#2e7d32">bar only</text><text x="715" y="104" fill="#ccc">·</text>
+      <line x1="20" y1="116" x2="800" y2="116" stroke="#f0ebe0"/>
+      <!-- Kitchen -->
+      <text x="30" y="142" text-anchor="start">Kitchen manager</text>
+      <text x="330" y="142" fill="#2e7d32">✓</text><text x="420" y="142" fill="#2e7d32">✓</text><text x="515" y="142" fill="#2e7d32">✓</text><text x="610" y="142" fill="#2e7d32">all</text><text x="715" y="142" fill="#ccc">·</text>
+      <line x1="20" y1="154" x2="800" y2="154" stroke="#f0ebe0"/>
+      <!-- Driver -->
+      <text x="30" y="180" text-anchor="start">Driver</text>
+      <text x="330" y="180" fill="#ccc">·</text><text x="420" y="180" fill="#ccc">·</text><text x="515" y="180" fill="#2e7d32">✓</text><text x="610" y="180" fill="#ccc">·</text><text x="715" y="180" fill="#ccc">·</text>
+      <line x1="20" y1="192" x2="800" y2="192" stroke="#f0ebe0"/>
+      <!-- Admin -->
+      <text x="30" y="218" text-anchor="start" font-weight="700">Admin</text>
+      <text x="330" y="218" fill="#2e7d32">✓</text><text x="420" y="218" fill="#2e7d32">✓</text><text x="515" y="218" fill="#2e7d32">✓</text><text x="610" y="218" fill="#2e7d32">all</text><text x="715" y="218" fill="#2e7d32">✓</text>
+    </g>
+  </g>
+</svg>
+<figcaption>Who can see what. “own / bar only” = limited to that person’s location.</figcaption>
+</figure>
+
+<!-- ============ STORE STAFF ============ -->
+<h2 id="store">Store staff <span class="role-badge">Orderer · Store manager · Bar staff</span></h2>
+
+<div class="tip"><b>Your daily routine:</b> 1) Count your stock at the end of the day (Stocktake). 2) Check what's low. 3) Place or top up your order before the Monday cutoff.</div>
+
+<h3>Placing a weekly order</h3>
+<ol>
+  <li>Go to <b>Order</b>.</li>
+  <li>Make sure the type is <span class="pill">weekly</span>. The banner tells you which production week this order is for.</li>
+  <li>Browse by category, or tap <kbd>↻ Repeat last order</kbd> to load your previous order, then adjust.</li>
+  <li>Tap an item to add it; use <kbd>−</kbd> / <kbd>+</kbd> to set the quantity. The unit (e.g. pcs, kg) shows next to the name and the quantity.</li>
+  <li>Review the cart on the right, then tap <kbd>Submit</kbd>.</li>
+</ol>
+<div class="tip">If you submit more than once in the same week, the new items are <b>merged into your existing order</b> for that week (quantities add up) — as long as the kitchen hasn’t started it yet. So you don’t create a mess of duplicate orders.</div>
+
+<figure>
+<svg viewBox="0 0 820 120" xmlns="http://www.w3.org/2000/svg" font-family="Hanken Grotesk,sans-serif">
+  <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#DC5326"/></marker></defs>
+  <g font-size="13" text-anchor="middle">
+    <rect x="10"  y="40" width="130" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="75"  y="66">Browse / Repeat</text>
+    <rect x="180" y="40" width="130" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="245" y="66">Set quantities</text>
+    <rect x="350" y="40" width="130" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="415" y="66">Review cart</text>
+    <rect x="520" y="40" width="130" height="42" rx="9" fill="#fbe9e0" stroke="#DC5326"/><text x="585" y="66" font-weight="700" fill="#DC5326">Submit</text>
+    <rect x="690" y="40" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="750" y="60">Kitchen</text><text x="750" y="76" font-size="11" fill="#6b665c">receives it</text>
+    <line x1="142" y1="61" x2="176" y2="61" stroke="#DC5326" stroke-width="2" marker-end="url(#ar)"/>
+    <line x1="312" y1="61" x2="346" y2="61" stroke="#DC5326" stroke-width="2" marker-end="url(#ar)"/>
+    <line x1="482" y1="61" x2="516" y2="61" stroke="#DC5326" stroke-width="2" marker-end="url(#ar)"/>
+    <line x1="652" y1="61" x2="686" y2="61" stroke="#DC5326" stroke-width="2" marker-end="url(#ar)"/>
+  </g>
+</svg>
+<figcaption>Placing an order, start to finish.</figcaption>
+</figure>
+
+<h3>The weekly cutoff</h3>
+<p>There’s a weekly cutoff (default <b>Monday 08:00</b>). Orders placed before it count for <b>this week’s</b> production; orders placed after it automatically roll to <b>next week</b>. You can always order — nothing gets locked.</p>
+
+<h3>Urgent &amp; event orders</h3>
+<ul>
+  <li><span class="pill">urgent</span> — handled right away, not tied to a production week. Use for things you forgot or need fast.</li>
+  <li><span class="pill">event</span> — for catering/events. You can add an event name and date. Handled separately from weekly production.</li>
+</ul>
+
+<h3>Templates</h3>
+<p>Save a recurring order as a template, then load it next time with one tap. Look for the templates row at the top of the order page.</p>
+
+<!-- ============ KITCHEN ============ -->
+<h2 id="kitchen">Kitchen <span class="role-badge">Kitchen manager</span></h2>
+
+<div class="tip"><b>Your daily routine:</b> 1) Open Kitchen, work the urgent and this-week orders. 2) Use "By item" to see total production needed. 3) Mark items Ready as you finish; send buy-list items to Procurement.</div>
+
+<h3>Working through orders</h3>
+<ol>
+  <li>Go to <b>Kitchen</b>. Switch between <kbd>By order</kbd> (one store at a time) and <kbd>By item</kbd> (totals across all stores — best for production planning).</li>
+  <li>Orders are grouped into <b>🔥 Urgent</b>, <b>🎉 Event</b>, <b>This week’s production</b>, and <b>Next week</b>.</li>
+  <li>If one store has several orders for the week, they’re folded into one group showing combined totals — tap to expand and work the individual orders.</li>
+  <li>For each item, mark it <kbd>Ready</kbd>, <kbd>Short</kbd> (made less than asked), or <kbd>None</kbd> (can’t make).</li>
+  <li>Items marked “buy” go to the purchasing list instead of being produced.</li>
+</ol>
+
+<figure>
+<svg viewBox="0 0 820 150" xmlns="http://www.w3.org/2000/svg" font-family="Hanken Grotesk,sans-serif">
+  <defs><marker id="ar2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#DC5326"/></marker></defs>
+  <g font-size="13" text-anchor="middle">
+    <rect x="20"  y="55" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="80"  y="81">Submitted</text>
+    <rect x="190" y="55" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="250" y="76">Ready /</text><text x="250" y="90" font-size="11">Short / None</text>
+    <rect x="360" y="55" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="420" y="81">Dispatched</text>
+    <rect x="530" y="55" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="590" y="81">Received</text>
+    <rect x="690" y="55" width="110" height="42" rx="9" fill="#fbe9e0" stroke="#DC5326"/><text x="745" y="81" font-weight="700" fill="#DC5326">Completed</text>
+    <line x1="142" y1="76" x2="186" y2="76" stroke="#DC5326" stroke-width="2" marker-end="url(#ar2)"/>
+    <line x1="312" y1="76" x2="356" y2="76" stroke="#DC5326" stroke-width="2" marker-end="url(#ar2)"/>
+    <line x1="482" y1="76" x2="526" y2="76" stroke="#DC5326" stroke-width="2" marker-end="url(#ar2)"/>
+    <line x1="652" y1="76" x2="686" y2="76" stroke="#DC5326" stroke-width="2" marker-end="url(#ar2)"/>
+    <text x="80" y="125" font-size="11" fill="#6b665c">store places it</text>
+    <text x="250" y="125" font-size="11" fill="#6b665c">kitchen makes</text>
+    <text x="420" y="125" font-size="11" fill="#6b665c">driver sends</text>
+    <text x="590" y="125" font-size="11" fill="#6b665c">store confirms</text>
+  </g>
+</svg>
+<figcaption>The life of an order item.</figcaption>
+</figure>
+
+<h3>Finishing</h3>
+<ul>
+  <li>When all items in an order are handled you can complete it; completed orders stay visible (dimmed) and can be reopened.</li>
+  <li>Producing an item adds it to Central Kitchen stock as a new batch (with today’s date and an expiry based on the item’s shelf life).</li>
+</ul>
+
+<!-- ============ INVENTORY ============ -->
+<h2 id="inventory">Inventory &amp; stocktake <span class="role-badge">Kitchen · Store manager · Bar staff</span></h2>
+
+<figure>
+<svg viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg" font-family="Hanken Grotesk,sans-serif">
+  <defs><marker id="ar3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#DC5326"/></marker></defs>
+  <g font-size="13" text-anchor="middle">
+    <rect x="320" y="20" width="180" height="48" rx="10" fill="#fbe9e0" stroke="#DC5326"/>
+    <text x="410" y="40" font-weight="700" fill="#DC5326">Central Kitchen</text><text x="410" y="58" font-size="11" fill="#6b665c">stock (batches)</text>
+
+    <rect x="60"  y="150" width="150" height="48" rx="10" fill="#fff" stroke="#e4ded2"/><text x="135" y="170">Store stock</text><text x="135" y="186" font-size="11" fill="#6b665c">101 Bistro, Neo…</text>
+    <rect x="610" y="150" width="150" height="48" rx="10" fill="#fff" stroke="#e4ded2"/><text x="685" y="170">Bar stock</text><text x="685" y="186" font-size="11" fill="#6b665c">Tigris Bar</text>
+    <rect x="335" y="150" width="150" height="48" rx="10" fill="#fff" stroke="#e4ded2"/><text x="410" y="176">Scrap / waste</text>
+
+    <line x1="340" y1="68" x2="180" y2="146" stroke="#DC5326" stroke-width="2" marker-end="url(#ar3)"/>
+    <text x="210" y="120" font-size="11" fill="#6b665c">dispatch</text>
+    <line x1="200" y1="150" x2="350" y2="74" stroke="#DC5326" stroke-width="2" marker-end="url(#ar3)"/>
+    <text x="300" y="140" font-size="11" fill="#6b665c">↩ send back</text>
+    <line x1="410" y1="68" x2="410" y2="146" stroke="#999" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#ar3)"/>
+    <text x="455" y="115" font-size="11" fill="#6b665c">throw expired</text>
+    <text x="685" y="135" font-size="11" fill="#6b665c">supplier (own)</text>
+    <line x1="685" y1="120" x2="685" y2="146" stroke="#999" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#ar3)"/>
+  </g>
+</svg>
+<figcaption>How stock moves. Bars buy their own stock; stores receive from and return to the kitchen.</figcaption>
+</figure>
+
+<h3>Doing a stocktake</h3>
+<div class="tip"><b>Why count daily:</b> the system doesn't track each sale. You keep stock accurate by counting what's actually left — the system works out how much was used since last time. Count fast-moving items (sauces, mains) daily and slow ones (dry goods) weekly. Accurate counts = correct low-stock alerts = you reorder the right things.</div>
+<ol>
+  <li>Go to <b>Inventory → Stocktake</b>. Pick your location if asked.</li>
+  <li>Tap an item. Enter the <b>actual total</b> you counted using the big number field, then <kbd>Save count</kbd>. The system adjusts the batches behind the scenes — you don’t need to think about batches day to day.</li>
+  <li>Use search and the “only uncounted” filter to track progress (“Counted X/Y”).</li>
+  <li>Tap <kbd>➕ Add items</kbd> to add something that isn’t on this location’s list yet.</li>
+</ol>
+
+<h3>Expiring &amp; expired stock</h3>
+<p>Items expiring within 7 days show a yellow tag; expired show red. Open the item — expiring/expired batches are listed with a <kbd>🗑 Throw</kbd> button. Throwing reduces stock and is logged as waste.</p>
+
+<h3>Sending stock back to Central Kitchen</h3>
+<p>Stores can return stock to the Central Kitchen: open the item, use <b>↩ Send back to Central Kitchen</b>, enter the quantity. It leaves your stock immediately; the kitchen confirms receipt under <b>Receiving</b>.</p>
+
+<h3>Receiving deliveries</h3>
+<p>Under <b>Inventory → Receiving</b> you confirm what arrived — both deliveries from the kitchen and returns from stores. Confirming adds the quantity to that location’s stock.</p>
+
+<div class="tip">Bar staff only see Inventory for their own bar (e.g. Coca-Cola, drinks). They count and manage their own stock; they don’t order from the kitchen.</div>
+
+<!-- ============ DRIVER ============ -->
+<h2 id="driver">Driver / dispatch <span class="role-badge">Driver · Kitchen · Admin</span></h2>
+<ol>
+  <li>Go to <b>Dispatch</b>. Ready items are grouped per store.</li>
+  <li>Mark items as dispatched as they go out; this deducts them from Central Kitchen stock (oldest batch first).</li>
+  <li>Use the slip print for a paper packing list if needed.</li>
+  <li>“Close week &amp; archive” moves finished orders out of the active view.</li>
+</ol>
+
+<!-- ============ ADMIN ============ -->
+<h2 id="admin">Admin <span class="role-badge">Admin</span></h2>
+
+<h3>Dashboard</h3>
+<p>Built for a daily glance, top to bottom: <b>Needs attention</b> first (expired / expiring stock, stores that haven't ordered, low stock, unavailable items) — or "All clear" when there's nothing. Then the key numbers (items to handle, ready to dispatch, buy list), then per-store progress, then quick links. The weekly cutoff setting lives in a collapsed <b>⚙ Settings</b> section at the bottom.</p>
+
+<h3>Catalog (products)</h3>
+<ul>
+  <li><b>Items</b> tab: search, filter by category or status, and sort. Each item has its name, category, Make/Buy, order unit, price, and active toggle.</li>
+  <li>Tap <kbd>⚙ Specs</kbd> on a row to set the stock unit, <b>Per unit</b> content (weight in g/kg or count in pcs/db), shelf life (days), storage, low-stock threshold, and <b>vacuum level</b> (P0–P7 for sealing).</li>
+  <li>Hover the <span class="pill">ⓘ</span> on any column header for an explanation.</li>
+  <li>Set supplier prices with the 💰 button — these feed the spend report.</li>
+</ul>
+
+<h3>Users</h3>
+<ul>
+  <li>Create a user with just a <b>username</b> + password + role (+ location for store-bound roles). The username becomes their display name.</li>
+  <li>Roles: Orderer, Store manager, Bar staff, Kitchen manager, Driver, Admin.</li>
+  <li><kbd>Password</kbd> resets a password; <kbd>Disable</kbd> blocks login but keeps records; <kbd>Delete</kbd> removes the account permanently.</li>
+</ul>
+<div class="warn">Use <b>Disable</b> rather than Delete if the person may return or has historical orders. Delete is permanent.</div>
+
+<h3>Reports</h3>
+<ul>
+  <li><b>Purchasing spend</b> — what was bought, by item / supplier / store, for a week, month, or all time. Needs supplier prices set in Catalog.</li>
+  <li><b>Stock log</b> — every stock movement (produced, dispatched, received, returned, stocktake, scrap) with filters, plus total waste/scrap value.</li>
+</ul>
+
+<!-- ============ FAQ ============ -->
+<h2 id="faq">Troubleshooting</h2>
+<h3>The app is stuck loading / behaving oddly</h3>
+<p>Close it fully and reopen. On a phone PWA, you can also remove it from the home screen and re-add it to clear old cached versions.</p>
+<h3>I can’t sign in</h3>
+<p>Check the username and password with your admin. The admin can reset your password from the Users page.</p>
+<h3>“No ordering role yet”</h3>
+<p>Your account exists but has no role assigned. An admin needs to set your role (and location) on the Users page.</p>
+<h3>An item shows no unit / wrong unit</h3>
+<p>An admin can fix it in Catalog → Items (order unit, and Specs for stock unit / per-unit content).</p>
+
+<footer>
+  Internal use only. To update this guide, edit the source and re-share.
+  &nbsp;·&nbsp; Version 1.1 — 16 June 2026.
+</footer>
+
+</div>
+</body>
+</html>

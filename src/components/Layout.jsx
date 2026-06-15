@@ -45,6 +45,7 @@ export default function Layout({ children }) {
             <NavLink to="/admin/locations" className="navlink">Locations</NavLink>
             <NavLink to="/admin/users" className="navlink">Users</NavLink>
           </>}
+          <a href="/user-guide.html" target="_blank" rel="noopener" className="navlink help">❓ Help</a>
         </nav>
         <div className="who">
           <ThemeToggle />

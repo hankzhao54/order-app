@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rendelési és elosztási rendszer — Útmutató</title>
+<style>
+  :root{
+    --paper:#F8F5EF; --ink:#1C1A15; --muted:#6b665c; --line:#e4ded2;
+    --ember:#DC5326; --ember-bg:#fbe9e0; --card:#fff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:-apple-system,"Hanken Grotesk",Segoe UI,Roboto,sans-serif;line-height:1.6;font-size:16px}
+  .wrap{max-width:860px;margin:0 auto;padding:32px 20px 80px}
+  header.top{border-bottom:3px solid var(--ember);padding-bottom:16px;margin-bottom:8px}
+  h1{font-family:"Bricolage Grotesque",sans-serif;font-size:30px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:14px}
+  .ver{font-size:13px;color:var(--muted);margin-top:6px}
+  nav.toc{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;margin:20px 0 28px}
+  nav.toc b{font-family:"Bricolage Grotesque",sans-serif}
+  nav.toc a{display:inline-block;margin:4px 14px 4px 0;color:var(--ember);text-decoration:none;font-weight:600}
+  nav.toc a:hover{text-decoration:underline}
+  h2{font-family:"Bricolage Grotesque",sans-serif;font-size:23px;margin:38px 0 10px;
+    border-bottom:2px solid var(--line);padding-bottom:6px}
+  .role-badge{display:inline-block;font-size:12px;font-weight:700;border-radius:999px;
+    padding:2px 12px;background:var(--ember-bg);color:var(--ember);vertical-align:middle;margin-left:8px}
+  h3{font-family:"Bricolage Grotesque",sans-serif;font-size:18px;margin:22px 0 6px}
+  ol,ul{margin:8px 0 8px 4px;padding-left:22px}
+  li{margin:4px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:14px 0}
+  .tip{border-left:4px solid var(--ember);background:var(--ember-bg);border-radius:8px;padding:10px 14px;margin:14px 0;font-size:15px}
+  .warn{border-left:4px solid #b4541f;background:#fdeee6;border-radius:8px;padding:10px 14px;margin:14px 0;font-size:15px}
+  code{background:#efe9dd;padding:1px 6px;border-radius:5px;font-size:14px}
+  kbd{background:var(--ink);color:#fff;border-radius:5px;padding:1px 7px;font-size:13px;font-weight:600}
+  .pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:13px;margin:0 2px}
+  footer{margin-top:48px;border-top:1px solid var(--line);padding-top:16px;color:var(--muted);font-size:13px}
+  figure{margin:18px 0;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;text-align:center}
+  figure svg{max-width:100%;height:auto}
+  figcaption{color:var(--muted);font-size:13px;margin-top:8px}
+  @media print{
+    body{background:#fff} .wrap{max-width:100%} nav.toc{break-inside:avoid}
+    h2{break-after:avoid} a{color:var(--ink);text-decoration:none}
+    figure{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h1>Rendelési és elosztási rendszer — Útmutató</h1>
+  <div class="sub">Hogyan használd a rendszert, szerepkörönként.</div>
+  <div class="ver">1.1 verzió · Utolsó frissítés: 2026. június 16. &nbsp;·&nbsp; <a href="/user-guide.html" style="color:#DC5326">English version →</a></div>
+</header>
+
+<div class="tip">A képernyőn lévő gombok és menük a rendszerben <b>angolul</b> jelennek meg (pl. <kbd>Submit</kbd>, <kbd>Stocktake</kbd>). Ebben az útmutatóban ezeket angolul hagytuk, hogy egyezzenek azzal, amit a képernyőn látsz; a magyarázat magyarul van.</div>
+
+<nav class="toc">
+  <b>Tartalom</b><br>
+  <a href="#start">Kezdő lépések</a>
+  <a href="#store">Bolti dolgozók</a>
+  <a href="#kitchen">Konyha</a>
+  <a href="#inventory">Készlet és leltár</a>
+  <a href="#driver">Sofőr / kiszállítás</a>
+  <a href="#admin">Admin</a>
+  <a href="#faq">Hibaelhárítás</a>
+</nav>
+
+<!-- ============ KEZDŐ LÉPÉSEK ============ -->
+<h2 id="start">Kezdő lépések</h2>
+<h3>Bejelentkezés</h3>
+<ol>
+  <li>Nyisd meg az alkalmazás linkjét telefonon vagy számítógépen. Telefonon a „Hozzáadás a kezdőképernyőhöz” opcióval app-ként használhatod.</li>
+  <li>Írd be a <b>felhasználóneved</b> (például <code>kh</code>) és a jelszavad.</li>
+  <li>Nyomd meg a <kbd>Sign in</kbd> gombot. Automatikusan a szerepkörödnek megfelelő oldalra kerülsz.</li>
+</ol>
+<div class="tip">Csak a felhasználónevedet kell beírnod — e-mail nem kell. Ha a fiókod valódi e-mailt használ, akkor a teljes e-mail címet írd be. A fiókokat és jelszavakat az admin hozza létre.</div>
+
+<h3>Mit látsz</h3>
+<p>A menü csak azt mutatja, amire a szerepkörödnek szüksége van. Egy bolti rendelő a rendelést látja; a konyha a gyártást; az admin mindent. Ha valami hiányzik, lehet, hogy a szerepkörödet kell módosítani — szólj az adminnak.</p>
+
+<figure>
+<svg viewBox="0 0 820 250" xmlns="http://www.w3.org/2000/svg" font-family="Hanken Grotesk,sans-serif">
+  <g font-size="12.5">
+    <text x="150" y="28" font-weight="700" font-size="13">Szerepkör</text>
+    <text x="330" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Rendelés</text>
+    <text x="420" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Konyha</text>
+    <text x="515" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Kiszállítás</text>
+    <text x="610" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Készlet</text>
+    <text x="715" y="28" text-anchor="middle" font-size="12" fill="#6b665c">Admin</text>
+    <line x1="20" y1="38" x2="800" y2="38" stroke="#e4ded2"/>
+    <g text-anchor="middle">
+      <text x="30" y="66" text-anchor="start">Rendelő / Boltvezető</text>
+      <text x="330" y="66" fill="#2e7d32">✓</text><text x="420" y="66" fill="#ccc">·</text><text x="515" y="66" fill="#ccc">·</text><text x="610" y="66" fill="#2e7d32">saját</text><text x="715" y="66" fill="#ccc">·</text>
+      <line x1="20" y1="78" x2="800" y2="78" stroke="#f0ebe0"/>
+      <text x="30" y="104" text-anchor="start">Bárdolgozó</text>
+      <text x="330" y="104" fill="#ccc">·</text><text x="420" y="104" fill="#ccc">·</text><text x="515" y="104" fill="#ccc">·</text><text x="610" y="104" fill="#2e7d32">csak bár</text><text x="715" y="104" fill="#ccc">·</text>
+      <line x1="20" y1="116" x2="800" y2="116" stroke="#f0ebe0"/>
+      <text x="30" y="142" text-anchor="start">Konyhavezető</text>
+      <text x="330" y="142" fill="#2e7d32">✓</text><text x="420" y="142" fill="#2e7d32">✓</text><text x="515" y="142" fill="#2e7d32">✓</text><text x="610" y="142" fill="#2e7d32">összes</text><text x="715" y="142" fill="#ccc">·</text>
+      <line x1="20" y1="154" x2="800" y2="154" stroke="#f0ebe0"/>
+      <text x="30" y="180" text-anchor="start">Sofőr</text>
+      <text x="330" y="180" fill="#ccc">·</text><text x="420" y="180" fill="#ccc">·</text><text x="515" y="180" fill="#2e7d32">✓</text><text x="610" y="180" fill="#ccc">·</text><text x="715" y="180" fill="#ccc">·</text>
+      <line x1="20" y1="192" x2="800" y2="192" stroke="#f0ebe0"/>
+      <text x="30" y="218" text-anchor="start" font-weight="700">Admin</text>
+      <text x="330" y="218" fill="#2e7d32">✓</text><text x="420" y="218" fill="#2e7d32">✓</text><text x="515" y="218" fill="#2e7d32">✓</text><text x="610" y="218" fill="#2e7d32">összes</text><text x="715" y="218" fill="#2e7d32">✓</text>
+    </g>
+  </g>
+</svg>
+<figcaption>Ki mit lát. A „saját / csak bár” az adott személy telephelyére korlátozódik.</figcaption>
+</figure>
+
+<!-- ============ BOLTI DOLGOZÓK ============ -->
+<h2 id="store">Bolti dolgozók <span class="role-badge">Rendelő · Boltvezető · Bárdolgozó</span></h2>
+
+<div class="tip"><b>Napi teendőid:</b> 1) Számold meg a készleted a nap végén (<kbd>Stocktake</kbd>). 2) Nézd meg, miből van kevés. 3) Add le vagy egészítsd ki a rendelésed a hétfői határidő előtt.</div>
+
+<h3>Heti rendelés leadása</h3>
+<ol>
+  <li>Menj a <b>Order</b> oldalra.</li>
+  <li>Győződj meg róla, hogy a típus <span class="pill">weekly</span> (heti). A felirat megmutatja, melyik gyártási hétre szól a rendelés.</li>
+  <li>Böngéssz kategóriánként, vagy nyomd meg a <kbd>↻ Repeat last order</kbd> gombot az előző rendelés betöltéséhez, majd módosítsd.</li>
+  <li>Koppints egy tételre a hozzáadáshoz; a <kbd>−</kbd> / <kbd>+</kbd> gombokkal állítsd a mennyiséget. A mértékegység (pl. db, kg) a név és a mennyiség mellett látszik.</li>
+  <li>Ellenőrizd a kosarat (<b>Cart</b>) jobb oldalon, majd nyomd meg a <kbd>Submit</kbd> gombot.</li>
+</ol>
+<div class="tip">Ha egy héten belül többször is leadsz rendelést, az új tételek <b>összevonódnak a meglévő heti rendeléseddel</b> (a mennyiségek összeadódnak) — feltéve, hogy a konyha még nem kezdte el. Így nem keletkezik egy csomó duplikált rendelés.</div>
+
+<figure>
+<svg viewBox="0 0 820 120" xmlns="http://www.w3.org/2000/svg" font-family="Hanken Grotesk,sans-serif">
+  <defs><marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#DC5326"/></marker></defs>
+  <g font-size="13" text-anchor="middle">
+    <rect x="10"  y="40" width="130" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="75"  y="66">Böngészés</text>
+    <rect x="180" y="40" width="130" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="245" y="66">Mennyiségek</text>
+    <rect x="350" y="40" width="130" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="415" y="66">Kosár</text>
+    <rect x="520" y="40" width="130" height="42" rx="9" fill="#fbe9e0" stroke="#DC5326"/><text x="585" y="66" font-weight="700" fill="#DC5326">Submit</text>
+    <rect x="690" y="40" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="750" y="60">Konyha</text><text x="750" y="76" font-size="11" fill="#6b665c">megkapja</text>
+    <line x1="142" y1="61" x2="176" y2="61" stroke="#DC5326" stroke-width="2" marker-end="url(#ar)"/>
+    <line x1="312" y1="61" x2="346" y2="61" stroke="#DC5326" stroke-width="2" marker-end="url(#ar)"/>
+    <line x1="482" y1="61" x2="516" y2="61" stroke="#DC5326" stroke-width="2" marker-end="url(#ar)"/>
+    <line x1="652" y1="61" x2="686" y2="61" stroke="#DC5326" stroke-width="2" marker-end="url(#ar)"/>
+  </g>
+</svg>
+<figcaption>Rendelés leadása az elejétől a végéig.</figcaption>
+</figure>
+
+<h3>Heti határidő</h3>
+<p>Van egy heti határidő (alapból <b>hétfő 08:00</b>). Az előtte leadott rendelések <b>az adott heti</b> gyártásba számítanak; az utána leadottak automatikusan átkerülnek a <b>következő hétre</b>. Bármikor rendelhetsz — semmi sem záródik le.</p>
+
+<h3>Sürgős és rendezvény rendelések</h3>
+<ul>
+  <li><span class="pill">urgent</span> (sürgős) — azonnal feldolgozzák, nem kötődik gyártási héthez. Akkor használd, ha elfelejtettél valamit vagy gyorsan kell.</li>
+  <li><span class="pill">event</span> (rendezvény) — cateringhez/rendezvényekhez. Megadhatsz nevet és dátumot. A heti gyártástól külön kezelik.</li>
+</ul>
+
+<h3>Sablonok</h3>
+<p>Mentsd el a visszatérő rendelést sablonként, majd legközelebb egy koppintással betöltheted. Keresd a sablonok sorát a rendelési oldal tetején.</p>
+
+<!-- ============ KONYHA ============ -->
+<h2 id="kitchen">Konyha <span class="role-badge">Konyhavezető</span></h2>
+
+<div class="tip"><b>Napi teendőid:</b> 1) Nyisd meg a <b>Kitchen</b> oldalt, dolgozd fel a sürgős és az e-heti rendeléseket. 2) A <kbd>By item</kbd> nézettel látod az össz gyártási igényt. 3) Jelöld <kbd>Ready</kbd>-nek a kész tételeket; a vásárlandó tételek a beszerzéshez kerülnek.</div>
+
+<h3>Rendelések feldolgozása</h3>
+<ol>
+  <li>Menj a <b>Kitchen</b> oldalra. Válts a <kbd>By order</kbd> (egy bolt egyszerre) és a <kbd>By item</kbd> (összesítés az összes boltra — gyártástervezéshez a legjobb) nézet között.</li>
+  <li>A rendelések csoportokba rendeződnek: <b>🔥 Urgent</b>, <b>🎉 Event</b>, <b>e-heti gyártás</b> és <b>következő hét</b>.</li>
+  <li>Ha egy boltnak több rendelése is van a hétre, ezek egy csoportba hajtódnak össze, az összesített mennyiségekkel — koppints a kibontáshoz és az egyes rendelések feldolgozásához.</li>
+  <li>Minden tételnél jelöld: <kbd>Ready</kbd> (kész), <kbd>Short</kbd> (a kértnél kevesebb készült), vagy <kbd>None</kbd> (nem gyártható).</li>
+  <li>A „buy” (vásárlandó) jelű tételek a beszerzési listára kerülnek gyártás helyett.</li>
+</ol>
+
+<figure>
+<svg viewBox="0 0 820 150" xmlns="http://www.w3.org/2000/svg" font-family="Hanken Grotesk,sans-serif">
+  <defs><marker id="ar2" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#DC5326"/></marker></defs>
+  <g font-size="13" text-anchor="middle">
+    <rect x="20"  y="55" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="80"  y="81">Leadva</text>
+    <rect x="190" y="55" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="250" y="76">Kész /</text><text x="250" y="90" font-size="11">Kevesebb / Nincs</text>
+    <rect x="360" y="55" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="420" y="81">Kiszállítva</text>
+    <rect x="530" y="55" width="120" height="42" rx="9" fill="#fff" stroke="#e4ded2"/><text x="590" y="81">Átvéve</text>
+    <rect x="690" y="55" width="110" height="42" rx="9" fill="#fbe9e0" stroke="#DC5326"/><text x="745" y="81" font-weight="700" fill="#DC5326">Befejezve</text>
+    <line x1="142" y1="76" x2="186" y2="76" stroke="#DC5326" stroke-width="2" marker-end="url(#ar2)"/>
+    <line x1="312" y1="76" x2="356" y2="76" stroke="#DC5326" stroke-width="2" marker-end="url(#ar2)"/>
+    <line x1="482" y1="76" x2="526" y2="76" stroke="#DC5326" stroke-width="2" marker-end="url(#ar2)"/>
+    <line x1="652" y1="76" x2="686" y2="76" stroke="#DC5326" stroke-width="2" marker-end="url(#ar2)"/>
+    <text x="80" y="125" font-size="11" fill="#6b665c">bolt leadja</text>
+    <text x="250" y="125" font-size="11" fill="#6b665c">konyha gyártja</text>
+    <text x="420" y="125" font-size="11" fill="#6b665c">sofőr viszi</text>
+    <text x="590" y="125" font-size="11" fill="#6b665c">bolt visszaigazolja</text>
+  </g>
+</svg>
+<figcaption>Egy rendelési tétel életútja.</figcaption>
+</figure>
+
+<h3>Befejezés</h3>
+<ul>
+  <li>Ha egy rendelés minden tétele elkészült, lezárhatod; a lezárt rendelések láthatóak maradnak (halványítva) és újranyithatóak.</li>
+  <li>Egy tétel legyártása új tételként (batch) bekerül a központi konyha készletébe (a mai dátummal és a szavatosság alapján számított lejárattal).</li>
+</ul>
+
+<!-- ============ KÉSZLET ============ -->
+<h2 id="inventory">Készlet és leltár <span class="role-badge">Konyha · Boltvezető · Bárdolgozó</span></h2>
+
+<figure>
+<svg viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg" font-family="Hanken Grotesk,sans-serif">
+  <defs><marker id="ar3" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#DC5326"/></marker></defs>
+  <g font-size="13" text-anchor="middle">
+    <rect x="320" y="20" width="180" height="48" rx="10" fill="#fbe9e0" stroke="#DC5326"/>
+    <text x="410" y="40" font-weight="700" fill="#DC5326">Központi konyha</text><text x="410" y="58" font-size="11" fill="#6b665c">készlet (batch-ek)</text>
+    <rect x="60"  y="150" width="150" height="48" rx="10" fill="#fff" stroke="#e4ded2"/><text x="135" y="170">Bolti készlet</text><text x="135" y="186" font-size="11" fill="#6b665c">101 Bistro, Neo…</text>
+    <rect x="610" y="150" width="150" height="48" rx="10" fill="#fff" stroke="#e4ded2"/><text x="685" y="170">Bári készlet</text><text x="685" y="186" font-size="11" fill="#6b665c">Tigris Bar</text>
+    <rect x="335" y="150" width="150" height="48" rx="10" fill="#fff" stroke="#e4ded2"/><text x="410" y="176">Selejt / hulladék</text>
+    <line x1="340" y1="68" x2="180" y2="146" stroke="#DC5326" stroke-width="2" marker-end="url(#ar3)"/>
+    <text x="210" y="120" font-size="11" fill="#6b665c">kiszállítás</text>
+    <line x1="200" y1="150" x2="350" y2="74" stroke="#DC5326" stroke-width="2" marker-end="url(#ar3)"/>
+    <text x="300" y="140" font-size="11" fill="#6b665c">↩ visszaküldés</text>
+    <line x1="410" y1="68" x2="410" y2="146" stroke="#999" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#ar3)"/>
+    <text x="455" y="115" font-size="11" fill="#6b665c">lejárt kidobása</text>
+    <text x="685" y="135" font-size="11" fill="#6b665c">beszállító (saját)</text>
+    <line x1="685" y1="120" x2="685" y2="146" stroke="#999" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#ar3)"/>
+  </g>
+</svg>
+<figcaption>Hogyan mozog a készlet. A bárok saját készletet vásárolnak; a boltok a konyhától kapnak és oda küldenek vissza.</figcaption>
+</figure>
+
+<h3>Leltározás</h3>
+<div class="tip"><b>Miért számolj naponta:</b> a rendszer nem követi az egyes eladásokat. Úgy tartod pontosan a készletet, hogy megszámolod, mi maradt ténylegesen — a rendszer kiszámolja, mennyi fogyott a múltkori számolás óta. A gyorsan fogyó tételeket (szószok, fő alapanyagok) naponta, a lassabbakat (száraz áru) hetente számold. Pontos számolás = helyes „kevés a készlet” jelzés = a megfelelő dolgokat rendeled újra.</div>
+<ol>
+  <li>Menj az <b>Inventory → Stocktake</b> menübe. Válaszd ki a telephelyet, ha kéri.</li>
+  <li>Koppints egy tételre. Írd be a <b>tényleges összmennyiséget</b>, amit megszámoltál a nagy számmezőbe, majd nyomd meg a <kbd>Save count</kbd> gombot. A rendszer a háttérben igazítja a batch-eket — a napi munkában nem kell a batch-ekkel foglalkoznod.</li>
+  <li>A kereséssel és a „csak megszámolatlanok” szűrővel követheted a haladást („Counted X/Y”).</li>
+  <li>A <kbd>➕ Add items</kbd> gombbal felvehetsz olyan tételt, ami még nincs ezen a telephelyen.</li>
+</ol>
+
+<h3>Lejáró és lejárt készlet</h3>
+<p>A 7 napon belül lejáró tételek sárga címkét, a lejártak pirosat kapnak. Nyisd meg a tételt — a lejáró/lejárt batch-ek a <kbd>🗑 Throw</kbd> (kidobás) gombbal jelennek meg. A kidobás csökkenti a készletet és hulladékként naplózódik.</p>
+
+<h3>Készlet visszaküldése a központi konyhába</h3>
+<p>A boltok visszaküldhetik a készletet a központi konyhába: nyisd meg a tételt, használd a <b>↩ Send back to Central Kitchen</b> gombot, írd be a mennyiséget. Azonnal kikerül a készletedből; a konyha a <b>Receiving</b> menüben igazolja az átvételt.</p>
+
+<h3>Szállítmányok átvétele</h3>
+<p>Az <b>Inventory → Receiving</b> menüben igazolod, mi érkezett — mind a konyhától jövő szállítmányokat, mind a boltok visszaküldéseit. Az igazolás hozzáadja a mennyiséget az adott telephely készletéhez.</p>
+
+<div class="tip">A bárdolgozók csak a saját bárjuk készletét látják (pl. Coca-Cola, italok). A saját készletüket számolják és kezelik; nem rendelnek a konyhától.</div>
+
+<!-- ============ SOFŐR ============ -->
+<h2 id="driver">Sofőr / kiszállítás <span class="role-badge">Sofőr · Konyha · Admin</span></h2>
+<ol>
+  <li>Menj a <b>Dispatch</b> oldalra. A kész tételek boltonként vannak csoportosítva.</li>
+  <li>Jelöld kiszállítottnak a tételeket, ahogy kimennek; ez levonja őket a központi konyha készletéből (a legrégebbi batch elsőként).</li>
+  <li>Ha kell, nyomtass papír szállítólevelet.</li>
+  <li>A „Close week &amp; archive” a befejezett rendeléseket kiveszi az aktív nézetből.</li>
+</ol>
+
+<!-- ============ ADMIN ============ -->
+<h2 id="admin">Admin <span class="role-badge">Admin</span></h2>
+
+<h3>Vezérlőpult (Dashboard)</h3>
+<p>Napi áttekintésre készült, fentről lefelé: elöl a <b>Needs attention</b> (lejárt/lejáró készlet, boltok amelyek még nem rendeltek, alacsony készlet, nem elérhető tételek) — vagy „All clear”, ha nincs teendő. Utána a fő számok (feldolgozandó tételek, kiszállításra kész, vásárlási lista), majd a boltonkénti haladás, végül a gyors linkek. A heti határidő beállítása egy összecsukott <b>⚙ Settings</b> szakaszban van alul.</p>
+
+<h3>Katalógus (termékek)</h3>
+<ul>
+  <li><b>Items</b> fül: keresés, szűrés kategória vagy státusz szerint, rendezés. Minden tételnek van neve, kategóriája, Gyártott/Vásárolt jelölése, rendelési egysége, ára és aktív kapcsolója.</li>
+  <li>Egy soron a <kbd>⚙ Specs</kbd> gombbal állítható a készletegység, a <b>Per unit</b> (egységnyi) tartalom (súly g/kg vagy darabszám db), szavatosság (nap), tárolás, alacsony-készlet küszöb és a <b>vákuumszint</b> (P0–P7 a fóliázáshoz).</li>
+  <li>Vidd az egeret bármelyik oszlopfejléc <span class="pill">ⓘ</span> jelére a magyarázatért.</li>
+  <li>A beszállítói árakat a 💰 gombbal állíthatod — ezek táplálják a költés-riportot.</li>
+</ul>
+
+<h3>Felhasználók</h3>
+<ul>
+  <li>Hozz létre felhasználót csak egy <b>felhasználónévvel</b> + jelszóval + szerepkörrel (+ telephellyel a bolthoz kötött szerepköröknél). A felhasználónév lesz a megjelenített név.</li>
+  <li>Szerepkörök: Rendelő, Boltvezető, Bárdolgozó, Konyhavezető, Sofőr, Admin.</li>
+  <li><kbd>Password</kbd>: jelszó visszaállítása; <kbd>Disable</kbd>: letiltja a belépést, de megőrzi az adatokat; <kbd>Delete</kbd>: véglegesen törli a fiókot.</li>
+</ul>
+<div class="warn">Inkább a <b>Disable</b>-t használd a Delete helyett, ha a személy visszatérhet, vagy ha vannak korábbi rendelései. A Delete végleges.</div>
+
+<h3>Riportok</h3>
+<ul>
+  <li><b>Purchasing spend</b> (beszerzési költés) — mit vásároltak, tétel / beszállító / bolt szerint, hétre, hónapra vagy összesen. Beszállítói árak szükségesek a Katalógusban.</li>
+  <li><b>Stock log</b> (készletmozgás napló) — minden készletmozgás (gyártott, kiszállított, átvett, visszaküldött, leltár, selejt) szűrőkkel, plusz az össz hulladék/selejt érték.</li>
+</ul>
+
+<!-- ============ HIBAELHÁRÍTÁS ============ -->
+<h2 id="faq">Hibaelhárítás</h2>
+<h3>Az app betöltésnél megáll / furán viselkedik</h3>
+<p>Zárd be teljesen és nyisd meg újra. Telefonon (PWA) le is törölheted a kezdőképernyőről és újra hozzáadhatod, hogy törlődjenek a régi gyorsítótárazott verziók.</p>
+<h3>Nem tudok belépni</h3>
+<p>Ellenőrizd a felhasználónevet és jelszót az adminnal. Az admin a Felhasználók oldalon vissza tudja állítani a jelszavad.</p>
+<h3>„No ordering role yet” (nincs még szerepkör)</h3>
+<p>A fiókod létezik, de nincs hozzá szerepkör rendelve. Az adminnak be kell állítania a szerepköröd (és telephelyed) a Felhasználók oldalon.</p>
+<h3>Egy tételnél nincs / rossz a mértékegység</h3>
+<p>Az admin javíthatja a Katalógus → Items menüben (rendelési egység, és a Specs alatt a készletegység / egységnyi tartalom).</p>
+
+<footer>
+  Csak belső használatra. Az útmutató frissítéséhez szerkeszd a forrást és oszd meg újra.
+  &nbsp;·&nbsp; 1.1 verzió — 2026. június 16.
+</footer>
+
+</div>
+</body>
+</html>
