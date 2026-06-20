@@ -15,6 +15,9 @@ import LocationsAdmin from './pages/admin/LocationsAdmin'
 import UsersAdmin from './pages/admin/UsersAdmin'
 import SuppliersAdmin from './pages/admin/SuppliersAdmin'
 import Dashboard from './pages/admin/Dashboard'
+import TracePage from './pages/TracePage'
+import LabelPage from './pages/LabelPage'
+import LabelsPage from './pages/LabelsPage'
 
 function Home() {
   const { role, user, loading } = useAuth()
@@ -43,6 +46,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/trace/:id" element={<TracePage />} />
+      <Route path="/label/:id" element={<RequireAuth allow={staff}><LabelPage /></RequireAuth>} />
+      <Route path="/labels" element={<RequireAuth allow={staff}><Layout><LabelsPage /></Layout></RequireAuth>} />
       <Route path="/" element={<RequireAuth><Home /></RequireAuth>} />
       <Route path="/order" element={<RequireAuth allow={orderers}><Layout><OrderingPage /></Layout></RequireAuth>} />
       <Route path="/dispatch" element={<RequireAuth allow={dispatchers}><Layout><DispatchPage /></Layout></RequireAuth>} />

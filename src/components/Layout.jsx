@@ -34,6 +34,7 @@ export default function Layout({ children }) {
           {(orderer || storeMgr || isStaff) &&
             <NavLink to="/order" className="navlink">Order</NavLink>}
           {isStaff && <NavLink to="/kitchen" className="navlink">Kitchen</NavLink>}
+          {isStaff && <NavLink to="/labels" className="navlink">Labels</NavLink>}
           {(isStaff || storeMgr || barStaff) && <NavLink to="/inventory" className="navlink">Inventory</NavLink>}
           {isStaff && <NavLink to="/reports" className="navlink">Reports</NavLink>}
           {(isStaff || driver) && <NavLink to="/dispatch" className="navlink">Dispatch</NavLink>}
