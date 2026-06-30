@@ -39,9 +39,10 @@ const ORDER_TRANSITIONS = {
   submitted: ['in_progress', 'cancelled'],
   in_progress: ['completed', 'cancelled', 'archived'],
   completed: ['in_progress', 'archived'],      // reopen, or swept up in week-close archive
-  cancelled: ['submitted'],                    // restore — always lands back on 'submitted',
-                                                // even if the order was 'in_progress' before it
-                                                // was cancelled. Pre-existing behavior, not new.
+  // restore — KitchenPage.restoreOrder() picks 'submitted' or 'in_progress'
+  // based on whether any item was already touched before the cancel, instead
+  // of always resetting to 'submitted' regardless of prior progress.
+  cancelled: ['submitted', 'in_progress'],
   archived: [],
 }
 
@@ -99,12 +100,18 @@ function itemStatusFor(dispatchStatus) {
 
 const ITEM_DISPATCH_TRANSITIONS = {
   pending: ['ready', 'short', 'unavailable', 'procuring'],
-  ready: ['pending', 'dispatched'],
+  // 'procuring' here is the undo path for ProcurementPage.reopen() sending a
+  // bought-then-reopened task's line back to the buyer queue.
+  ready: ['pending', 'dispatched', 'procuring'],
   short: ['pending', 'dispatched'],
   unavailable: ['pending'],
   procuring: ['pending', 'ready'],
-  dispatched: ['pending', 'received'],
-  received: ['pending'],
+  // once an item has left the kitchen (dispatched) or been confirmed at the
+  // destination (received), Kitchen's "tap to redo" no longer offers pending
+  // as a target — undoing either doesn't reverse the stock already consumed
+  // or recall a delivery already out the door.
+  dispatched: ['received'],
+  received: [],
 }
 
 export function canTransitionItem(from, to) {

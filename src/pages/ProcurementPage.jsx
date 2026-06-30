@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { fetchList, insertRow } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
-import { transitionProcurementTask, transitionItem } from '../lib/orderLifecycle'
+import { transitionProcurementTask, transitionItem, LifecycleError } from '../lib/orderLifecycle'
 
 const SELECT = `id,item_name,quantity,unit,status,note,unavail_reason,
   target_location_id,target:locations(name_en),catalog_item_id,source_order_item_id,created_at,bought_at`
@@ -69,6 +69,17 @@ export default function ProcurementPage() {
   async function reopen(t) {
     const { error } = await transitionProcurementTask(t, 'pending', { unavail_reason: null })
     if (error) { alert(error.message); return }
+    // mirror markBought's forward cascade: if this task was linked to an
+    // order line and that line hasn't moved past 'ready' yet (i.e. not
+    // dispatched/received in the meantime), send it back to the buyer queue
+    // too. Best-effort — if the line already moved on, leave it alone.
+    if (t.source_order_item_id) {
+      try {
+        await transitionItem({ id: t.source_order_item_id, dispatch_status: 'ready' }, 'procuring')
+      } catch (e) {
+        if (!(e instanceof LifecycleError)) throw e
+      }
+    }
     setDone(ds => ds.filter(x => x.id !== t.id))
     load()
   }

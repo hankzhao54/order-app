@@ -11,7 +11,12 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        skipWaiting: true
+        skipWaiting: true,
+        // the bundled user-guide HTML pages are standalone documents, not
+        // app routes — without this they get swallowed by the SPA
+        // navigation fallback below and silently show the app shell instead
+        // of the guide when opened in a new tab.
+        navigateFallbackDenylist: [/^\/user-guide(-hu)?\.html$/]
       },
       manifest: {
         name: 'Order App',

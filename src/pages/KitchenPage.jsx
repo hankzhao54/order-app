@@ -194,7 +194,11 @@ export default function KitchenPage() {
   }
   async function restoreOrder(orderId) {
     const o = cancelled.find(x => x.id === orderId)
-    await transitionOrder(o, 'submitted')
+    // land back where it actually was: if the kitchen had already touched an
+    // item before the cancel, that progress is still on the rows — go back
+    // to 'in_progress' instead of always resetting to 'submitted'.
+    const target = o.items.some(i => isItemHandled(i.dispatch_status)) ? 'in_progress' : 'submitted'
+    await transitionOrder(o, target)
     setCancelled(cs => cs.filter(o => o.id !== orderId))
     load()
   }
@@ -387,18 +391,29 @@ export default function KitchenPage() {
                       </div>
                     )}
 
-                    {/* settled status chip */}
-                    {isItemHandled(i.dispatch_status) && !isEditing && (
-                      <div className="dispatch-actions">
-                        <span className="statuschip" onClick={() => resetItem(i)} title="tap to redo">
-                          {i.dispatch_status === 'ready' && '✅ ready'}
-                          {i.dispatch_status === 'short' && `≈ short (${i.fulfilled_qty}/${i.quantity})`}
-                          {i.dispatch_status === 'unavailable' && `✕ none — ${i.unavail_reason || ''}`}
-                          {i.dispatch_status === 'procuring' && '📋 with buyer'}
-                          {i.dispatch_status === 'dispatched' && '📦 dispatched'}
-                        </span>
-                      </div>
-                    )}
+                    {/* settled status chip — only still re-doable statuses are clickable;
+                        once an item has left the kitchen (dispatched/received) the chip
+                        is informational only */}
+                    {isItemHandled(i.dispatch_status) && !isEditing && (() => {
+                      const resettable = canTransitionItem(i.dispatch_status, 'pending')
+                      return (
+                        <div className="dispatch-actions">
+                          <span
+                            className="statuschip"
+                            onClick={resettable ? () => resetItem(i) : undefined}
+                            title={resettable ? 'tap to redo' : undefined}
+                            style={resettable ? undefined : { cursor: 'default' }}
+                          >
+                            {i.dispatch_status === 'ready' && '✅ ready'}
+                            {i.dispatch_status === 'short' && `≈ short (${i.fulfilled_qty}/${i.quantity})`}
+                            {i.dispatch_status === 'unavailable' && `✕ none — ${i.unavail_reason || ''}`}
+                            {i.dispatch_status === 'procuring' && '📋 with buyer'}
+                            {i.dispatch_status === 'dispatched' && '📦 dispatched'}
+                            {i.dispatch_status === 'received' && '📬 received'}
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
