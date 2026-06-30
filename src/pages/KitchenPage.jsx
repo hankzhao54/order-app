@@ -294,7 +294,7 @@ export default function KitchenPage() {
               <span className="muted small">{new Date(o.created_at).toLocaleString()}</span>
             </div>
             <div className="progressline">
-              {pend > 0 && <span className="pc pend">待做 {pend}</span>}
+              {pend > 0 && <span className="pc pend">⏳ {pend}</span>}
               {rdy > 0 && <span className="pc ok">✅ {rdy}</span>}
               {sh > 0 && <span className="pc warn">≈ {sh}</span>}
               {un > 0 && <span className="pc bad">✕ {un}</span>}
