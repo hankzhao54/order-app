@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchList, patchRow } from '../../lib/db'
 import { toLoginEmail } from '../../lib/username'
 
 const ROLES = ['restaurant_orderer', 'store_manager', 'bar_staff', 'kitchen_manager', 'driver', 'admin']
@@ -23,11 +24,11 @@ export default function UsersAdmin() {
   const [pwVal, setPwVal] = useState('')
 
   async function load() {
-    const [{ data: p }, { data: l }] = await Promise.all([
-      supabase.from('profiles').select('user_id, full_name, role, location_id, is_active').order('full_name'),
-      supabase.from('locations').select('id,name_en').eq('is_active', true).order('name_en')
+    const [p, l] = await Promise.all([
+      fetchList('profiles', { select: 'user_id, full_name, role, location_id, is_active', build: q => q.order('full_name') }),
+      fetchList('locations', { select: 'id,name_en', build: q => q.eq('is_active', true).order('name_en') })
     ])
-    setRows(p || []); setLocs(l || [])
+    setRows(p); setLocs(l)
   }
   useEffect(() => { load() }, [])
 
@@ -48,11 +49,11 @@ export default function UsersAdmin() {
     if (STORE_BOUND.includes(newRole) && !u.location_id) warn += `\n\n⚠ This role is store-bound but the user has no location set — set one after.`
     if (newRole === 'kitchen_manager' || newRole === 'admin') warn += `\n\n⚠ This role can see ALL locations' data.`
     if (!confirm(warn)) return
-    await supabase.from('profiles').update({ role: newRole }).eq('user_id', u.user_id)
+    await patchRow('profiles', u.user_id, { role: newRole }, { idColumn: 'user_id' })
     setRows(p => p.map(x => x.user_id === u.user_id ? { ...x, role: newRole } : x))
   }
   async function changeLoc(u, location_id) {
-    await supabase.from('profiles').update({ location_id: location_id || null }).eq('user_id', u.user_id)
+    await patchRow('profiles', u.user_id, { location_id: location_id || null }, { idColumn: 'user_id' })
     setRows(p => p.map(x => x.user_id === u.user_id ? { ...x, location_id: location_id || null } : x))
   }
 

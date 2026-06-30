@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { fetchList } from '../../lib/db'
 import { useRealtimeReload } from '../../lib/useRealtimeReload'
 
 function startOfWeek(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x}
@@ -10,17 +11,25 @@ export default function Dashboard() {
 
   async function load() {
     const weekStart = startOfWeek(new Date()).toISOString()
-    const [{ data: orders }, { data: locs }, { data: tasks }, { data: lowStock }, { data: batches }] = await Promise.all([
-      supabase.from('orders')
-        .select('id,location_id,status,created_at,completed_at,location:locations(name_en),items:order_items(id,item_name_snapshot,dispatch_status,quantity,unit_snapshot)')
-        .in('status', ['submitted', 'in_progress', 'completed'])
-        .order('created_at', { ascending: true }),
-      supabase.from('locations').select('id,name_en,is_central').eq('is_active', true),
-      supabase.from('procurement_tasks').select('id,status,item_name'),
-      supabase.from('location_stock').select('location_id, qty, item:catalog_items(name_en, reorder_level), loc:locations(name_en)'),
-      supabase.from('stock_batches').select('qty, expires_on, item:catalog_items(name_en), loc:locations(name_en)').gt('qty', 0).not('expires_on', 'is', null).order('expires_on')
+    // location_stock / stock_batches intentionally fetch every row (unfiltered) —
+    // the "needs attention" panel below scans all locations for low-stock /
+    // expiring items, so truncating here would silently hide real alerts.
+    // orders is bounded: it only resets weekly (kitchen completes, dispatch
+    // archives), but cap it defensively in case a week is left unclosed.
+    const [orders, locs, tasks, lowStock, batches] = await Promise.all([
+      fetchList('orders', {
+        select: 'id,location_id,status,created_at,completed_at,location:locations(name_en),items:order_items(id,item_name_snapshot,dispatch_status,quantity,unit_snapshot)',
+        build: q => q.in('status', ['submitted', 'in_progress', 'completed']).order('created_at', { ascending: true }).limit(500)
+      }),
+      fetchList('locations', { select: 'id,name_en,is_central', build: q => q.eq('is_active', true) }),
+      fetchList('procurement_tasks', { select: 'id,status,item_name' }),
+      fetchList('location_stock', { select: 'location_id, qty, item:catalog_items(name_en, reorder_level), loc:locations(name_en)' }),
+      fetchList('stock_batches', {
+        select: 'qty, expires_on, item:catalog_items(name_en), loc:locations(name_en)',
+        build: q => q.gt('qty', 0).not('expires_on', 'is', null).order('expires_on')
+      })
     ])
-    setData({ orders: orders || [], locs: locs || [], tasks: tasks || [], lowStock: lowStock || [], batches: batches || [], weekStart })
+    setData({ orders, locs, tasks, lowStock, batches, weekStart })
   }
   useEffect(() => { load() }, [])
   useRealtimeReload(['orders', 'order_items', 'procurement_tasks'], load)

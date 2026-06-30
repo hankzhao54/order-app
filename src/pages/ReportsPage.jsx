@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchList } from '../lib/db'
 import { downloadCSV, today } from '../lib/csv'
 
 const HUF = n => new Intl.NumberFormat('hu-HU', { maximumFractionDigits: 0 }).format(Math.round(n)) + ' Ft'
@@ -44,22 +45,24 @@ function Spend() {
 
   useEffect(() => {
     (async () => {
-      const [{ data: pr }, { data: sup }, { data: lc }] = await Promise.all([
-        supabase.from('item_prices').select('catalog_item_id, price, pack_qty, supplier_id, effective_date').order('effective_date', { ascending: false }),
-        supabase.from('suppliers').select('id, name'),
-        supabase.from('locations').select('id, name_en')
+      const [pr, sup, lc] = await Promise.all([
+        fetchList('item_prices', { select: 'catalog_item_id, price, pack_qty, supplier_id, effective_date', build: q => q.order('effective_date', { ascending: false }) }),
+        fetchList('suppliers', { select: 'id, name' }),
+        fetchList('locations', { select: 'id, name_en' })
       ])
-      const supMap = Object.fromEntries((sup || []).map(s => [s.id, s.name]))
+      const supMap = Object.fromEntries(sup.map(s => [s.id, s.name]))
       const pmap = {}
-      for (const p of pr || []) if (!pmap[p.catalog_item_id]) pmap[p.catalog_item_id] = { unit: Number(p.price) / (Number(p.pack_qty) || 1), supplier: supMap[p.supplier_id] || '—' }
-      setPrices(pmap); setLocs(Object.fromEntries((lc || []).map(l => [l.id, l.name_en]))); setLoading(false)
+      for (const p of pr) if (!pmap[p.catalog_item_id]) pmap[p.catalog_item_id] = { unit: Number(p.price) / (Number(p.pack_qty) || 1), supplier: supMap[p.supplier_id] || '—' }
+      setPrices(pmap); setLocs(Object.fromEntries(lc.map(l => [l.id, l.name_en]))); setLoading(false)
     })()
   }, [])
   useEffect(() => {
     (async () => {
-      let qb = supabase.from('procurement_tasks').select('id, catalog_item_id, item_name, quantity, target_location_id, bought_at').eq('status', 'bought')
-      const s = rangeStart(range); if (s) qb = qb.gte('bought_at', s.toISOString())
-      const { data } = await qb; setTasks(data || [])
+      const data = await fetchList('procurement_tasks', {
+        select: 'id, catalog_item_id, item_name, quantity, target_location_id, bought_at',
+        build: q => { q = q.eq('status', 'bought'); const s = rangeStart(range); return s ? q.gte('bought_at', s.toISOString()) : q }
+      })
+      setTasks(data)
     })()
   }, [range])
 
@@ -131,23 +134,25 @@ function StockLog() {
 
   useEffect(() => {
     (async () => {
-      const [{ data: c }, { data: l }, { data: pr }] = await Promise.all([
-        supabase.from('catalog_items').select('id, name_en'),
-        supabase.from('locations').select('id, name_en'),
-        supabase.from('item_prices').select('catalog_item_id, price, pack_qty, effective_date').order('effective_date', { ascending: false })
+      const [c, l, pr] = await Promise.all([
+        fetchList('catalog_items', { select: 'id, name_en' }),
+        fetchList('locations', { select: 'id, name_en' }),
+        fetchList('item_prices', { select: 'catalog_item_id, price, pack_qty, effective_date', build: q => q.order('effective_date', { ascending: false }) })
       ])
-      setCat(Object.fromEntries((c || []).map(x => [x.id, x.name_en])))
-      setLocs(Object.fromEntries((l || []).map(x => [x.id, x.name_en])))
-      const pmap = {}; for (const p of pr || []) if (!pmap[p.catalog_item_id]) pmap[p.catalog_item_id] = Number(p.price) / (Number(p.pack_qty) || 1)
+      setCat(Object.fromEntries(c.map(x => [x.id, x.name_en])))
+      setLocs(Object.fromEntries(l.map(x => [x.id, x.name_en])))
+      const pmap = {}; for (const p of pr) if (!pmap[p.catalog_item_id]) pmap[p.catalog_item_id] = Number(p.price) / (Number(p.pack_qty) || 1)
       setPrices(pmap)
     })()
   }, [])
   useEffect(() => {
     (async () => {
       setLoading(true)
-      let qb = supabase.from('stock_moves').select('id, catalog_item_id, delta, reason, note, location_id, created_at').order('created_at', { ascending: false }).limit(500)
-      const s = rangeStart(range); if (s) qb = qb.gte('created_at', s.toISOString())
-      const { data } = await qb; setMoves(data || []); setLoading(false)
+      const data = await fetchList('stock_moves', {
+        select: 'id, catalog_item_id, delta, reason, note, location_id, created_at',
+        build: q => { q = q.order('created_at', { ascending: false }).limit(500); const s = rangeStart(range); return s ? q.gte('created_at', s.toISOString()) : q }
+      })
+      setMoves(data); setLoading(false)
     })()
   }, [range])
 

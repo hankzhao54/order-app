@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchList, patchRow, insertRow } from '../../lib/db'
 
 export default function CatalogAdmin() {
   const [tab, setTab] = useState('items')   // items | categories
@@ -9,11 +10,11 @@ export default function CatalogAdmin() {
 
   async function load() {
     setLoading(true)
-    const [{ data: it }, { data: c }] = await Promise.all([
-      supabase.from('catalog_items').select('id,name_en,name_hu,order_unit,default_fulfillment,is_active,category_id,batch_yield_qty,batch_yield_unit,stock_unit,unit_weight,weight_unit,shelf_life_days,storage_location,reorder_level,vacuum_level').order('name_en'),
-      supabase.from('categories').select('id,name_en,name_hu,sort_order,is_active').order('sort_order')
+    const [it, c] = await Promise.all([
+      fetchList('catalog_items', { select: 'id,name_en,name_hu,order_unit,default_fulfillment,is_active,category_id,batch_yield_qty,batch_yield_unit,stock_unit,unit_weight,weight_unit,shelf_life_days,storage_location,reorder_level,vacuum_level', build: q => q.order('name_en') }),
+      fetchList('categories', { select: 'id,name_en,name_hu,sort_order,is_active', build: q => q.order('sort_order') })
     ])
-    setItems(it || []); setCats(c || []); setLoading(false)
+    setItems(it); setCats(c); setLoading(false)
   }
   useEffect(() => { load() }, [])
 
@@ -46,7 +47,7 @@ function Items({ items, cats, reload }) {
   function set(id, fields) { setLocal(p => p.map(x => x.id === id ? { ...x, ...fields } : x)) }
   async function patch(id, fields) {
     set(id, fields)
-    const { error } = await supabase.from('catalog_items').update(fields).eq('id', id)
+    const { error } = await patchRow('catalog_items', id, fields)
     if (error) setMsg(error.message)
   }
   async function addItem() {
@@ -58,7 +59,7 @@ function Items({ items, cats, reload }) {
       default_fulfillment: add.default_fulfillment || null,
       order_unit: add.order_unit || null
     }
-    const { error } = await supabase.from('catalog_items').insert(row)
+    const { error } = await insertRow('catalog_items', row)
     if (error) { setMsg(error.message); return }
     setAdd({ name_en: '', name_hu: '', category_id: '', default_fulfillment: '', order_unit: '' }); setMsg(''); reload()
   }
@@ -188,13 +189,13 @@ function Categories({ cats, reload }) {
   function set(id, fields) { setLocal(p => p.map(x => x.id === id ? { ...x, ...fields } : x)) }
   async function patch(id, fields) {
     set(id, fields)
-    const { error } = await supabase.from('categories').update(fields).eq('id', id)
+    const { error } = await patchRow('categories', id, fields)
     if (error) setMsg(error.message)
   }
   async function addCat() {
     if (!add.name_en.trim()) { setMsg('English name is required.'); return }
     const sort = (local.reduce((m, c) => Math.max(m, c.sort_order || 0), 0)) + 10
-    const { error } = await supabase.from('categories').insert({ name_en: add.name_en.trim(), name_hu: add.name_hu.trim() || null, sort_order: sort })
+    const { error } = await insertRow('categories', { name_en: add.name_en.trim(), name_hu: add.name_hu.trim() || null, sort_order: sort })
     if (error) { setMsg(error.message); return }
     setAdd({ name_en: '', name_hu: '' }); setMsg(''); reload()
   }
@@ -235,11 +236,11 @@ function PricePanel({ item }) {
 
   async function load() {
     setLoading(true)
-    const [{ data: p }, { data: s }] = await Promise.all([
-      supabase.from('item_prices').select('id,price,currency,pack_qty,pack_unit,effective_date,supplier:suppliers(name)').eq('catalog_item_id', item.id).order('effective_date', { ascending: false }),
-      supabase.from('suppliers').select('id,name').eq('is_active', true).order('name')
+    const [p, s] = await Promise.all([
+      fetchList('item_prices', { select: 'id,price,currency,pack_qty,pack_unit,effective_date,supplier:suppliers(name)', build: q => q.eq('catalog_item_id', item.id).order('effective_date', { ascending: false }) }),
+      fetchList('suppliers', { select: 'id,name', build: q => q.eq('is_active', true).order('name') })
     ])
-    setPrices(p || []); setSuppliers(s || []); setLoading(false)
+    setPrices(p); setSuppliers(s); setLoading(false)
   }
   useEffect(() => { load() }, [item.id])
 
@@ -255,7 +256,7 @@ function PricePanel({ item }) {
       pack_unit: f.pack_unit || null,
       effective_date: f.effective_date
     }
-    const { error } = await supabase.from('item_prices').insert(row)
+    const { error } = await insertRow('item_prices', row)
     if (error) { setMsg(error.message); return }
     setF({ supplier_id: '', price: '', pack_qty: '', pack_unit: '', effective_date: new Date().toISOString().slice(0, 10) })
     load()

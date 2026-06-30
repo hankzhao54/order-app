@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
+import { fetchList, patchRow, insertRow } from '../../lib/db'
 
 export default function LocationsAdmin() {
   const [locs, setLocs] = useState([])
@@ -7,19 +7,19 @@ export default function LocationsAdmin() {
   const [msg, setMsg] = useState('')
 
   async function load() {
-    const { data } = await supabase.from('locations').select('*').order('name_en')
-    setLocs(data || [])
+    const data = await fetchList('locations', { build: q => q.order('name_en') })
+    setLocs(data)
   }
   useEffect(() => { load() }, [])
 
   async function add() {
     setMsg('')
-    const { error } = await supabase.from('locations').insert(form)
+    const { error } = await insertRow('locations', form)
     if (error) { setMsg(error.message); return }
     setForm({ code: '', name_en: '', name_hu: '', is_central: false }); load()
   }
   async function toggle(id, is_active) {
-    await supabase.from('locations').update({ is_active }).eq('id', id); load()
+    await patchRow('locations', id, { is_active }); load()
   }
 
   return (

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchList, patchRow } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
 
@@ -24,10 +25,11 @@ export default function DispatchPage() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('orders').select(SELECT)
-      .in('status', ['in_progress', 'completed'])
-      .order('created_at', { ascending: true })
-    setOrders(data || []); setLoading(false)
+    const data = await fetchList('orders', {
+      select: SELECT,
+      build: q => q.in('status', ['in_progress', 'completed']).order('created_at', { ascending: true }).limit(500)
+    })
+    setOrders(data); setLoading(false)
   }
   useEffect(() => { load() }, [])
   useRealtimeReload(['orders', 'order_items'], load)
@@ -36,11 +38,11 @@ export default function DispatchPage() {
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => i.id === itemId ? { ...i, ...fields } : i) })))
   }
   async function markReady(item) {
-    await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, handled_by: user.id }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, handled_by: user.id })
     patchLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity })
   }
   async function markUnavailable(item, reason) {
-    await supabase.from('order_items').update({ dispatch_status: 'unavailable', status: 'done', fulfilled_qty: 0, unavail_reason: reason, handled_by: user.id }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'unavailable', status: 'done', fulfilled_qty: 0, unavail_reason: reason, handled_by: user.id })
     patchLocal(item.id, { dispatch_status: 'unavailable', unavail_reason: reason }); setReasonFor(null)
   }
   async function centralLoc() {
@@ -48,7 +50,7 @@ export default function DispatchPage() {
     return data?.id || null
   }
   async function dispatchItem(item) {
-    await supabase.from('order_items').update({ dispatch_status: 'dispatched' }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'dispatched' })
     patchLocal(item.id, { dispatch_status: 'dispatched' })
     if (item.catalog_item_id && item.fulfillment_type === 'make') {
       const qty = Number(item.fulfilled_qty ?? item.quantity) || 0
@@ -63,6 +65,9 @@ export default function DispatchPage() {
     await supabase.from('order_items').update({ dispatch_status: 'dispatched' }).in('id', ids)
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => ids.includes(i.id) ? { ...i, dispatch_status: 'dispatched' } : i) })))
     const c = await centralLoc()
+    // consume_fifo mutates shared stock-batch state for (location, item), so
+    // calls for the same item must stay serial to avoid a race in FIFO
+    // consumption order; only the bulk status update above was parallelizable.
     for (const it of ready) {
       if (c && it.catalog_item_id && it.fulfillment_type === 'make') {
         const qty = Number(it.fulfilled_qty ?? it.quantity) || 0

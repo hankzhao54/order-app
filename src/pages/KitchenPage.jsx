@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchList, patchRow, insertRow } from '../lib/db'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
 import { thisMonday } from '../lib/cutoff'
+import { BUCKET_LABELS, bucketOf, groupKey, buildOrderGroups, aggregateByItem, inThisWeek } from '../lib/kitchen'
 import { SkeletonCards } from '../components/Skeleton'
 
 const SELECT = `id, order_type, status, created_at, parent_order_id, production_week, event_name, event_date,
@@ -12,7 +14,8 @@ const SELECT = `id, order_type, status, created_at, parent_order_id, production_
 const REASONS = ['Out of stock', "Can't make in time", 'Temporarily unavailable']
 
 export default function KitchenPage() {
-  const [orders, setOrders] = useState([])
+  const [orders, setOrders] = useState([])          // active (submitted / in_progress) orders
+  const [completed, setCompleted] = useState([])     // lazy-loaded on demand
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)   // { itemId, mode: 'short'|'none'|'qty', qty }
   const [showCancelled, setShowCancelled] = useState(false)
@@ -28,25 +31,38 @@ export default function KitchenPage() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('orders').select(SELECT)
-      .in('status', ['submitted', 'in_progress', 'completed'])
-      .order('created_at', { ascending: true })
-    setOrders(data || []); setLoading(false)
+    const data = await fetchList('orders', {
+      select: SELECT,
+      build: q => q.in('status', ['submitted', 'in_progress']).order('created_at', { ascending: true })
+    })
+    setOrders(data); setLoading(false)
+  }
+  async function loadCompleted() {
+    const data = await fetchList('orders', {
+      select: SELECT,
+      build: q => q.eq('status', 'completed').order('completed_at', { ascending: false }).limit(50)
+    })
+    setCompleted(data)
   }
   useEffect(() => { load() }, [])
-  useEffect(() => { supabase.from('locations').select('id,name_en,is_central').eq('is_active', true).order('name_en').then(({ data }) => setLocations(data || [])) }, [])
+  useEffect(() => {
+    fetchList('locations', { select: 'id,name_en,is_central', build: q => q.eq('is_active', true).order('name_en') })
+      .then(setLocations)
+  }, [])
   async function loadStock() {
     const { data: central } = await supabase.from('locations').select('id').eq('is_central', true).eq('is_active', true).limit(1).maybeSingle()
     if (!central) { setStock({}); return }
     setCentralId(central.id)
-    const { data } = await supabase.from('location_stock')
-      .select('catalog_item_id, qty, item:catalog_items(stock_unit)').eq('location_id', central.id).gt('qty', 0)
-    const m = {}; for (const r of data || []) m[r.catalog_item_id] = { qty: Number(r.qty), unit: r.item?.stock_unit || '' }
+    const data = await fetchList('location_stock', {
+      select: 'catalog_item_id, qty, item:catalog_items(stock_unit)',
+      build: q => q.eq('location_id', central.id).gt('qty', 0)
+    })
+    const m = {}; for (const r of data) m[r.catalog_item_id] = { qty: Number(r.qty), unit: r.item?.stock_unit || '' }
     setStock(m)
   }
   useEffect(() => { loadStock() }, [])
   // auto-refresh on changes; pause while an inline editor is open
-  useRealtimeReload(['orders', 'order_items'], load, editing !== null || procureFor !== null)
+  useRealtimeReload(['orders', 'order_items'], () => { load(); if (showCompleted) loadCompleted() }, editing !== null || procureFor !== null)
 
   function patchItemLocal(itemId, fields) {
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => i.id === itemId ? { ...i, ...fields } : i) })))
@@ -54,18 +70,18 @@ export default function KitchenPage() {
   async function ensureStarted(orderId) {
     const o = orders.find(x => x.id === orderId)
     if (o && o.status === 'submitted') {
-      await supabase.from('orders').update({ status: 'in_progress' }).eq('id', orderId)
+      await patchRow('orders', orderId, { status: 'in_progress' })
       setOrders(os => os.map(x => x.id === orderId ? { ...x, status: 'in_progress' } : x))
     }
   }
   async function setFulfillment(item, type) {
-    await supabase.from('order_items').update({ fulfillment_type: type }).eq('id', item.id)
+    await patchRow('order_items', item.id, { fulfillment_type: type })
     patchItemLocal(item.id, { fulfillment_type: type })
   }
   async function fulfillFromStock(item, orderId) {
     setEditing(null)
     await ensureStarted(orderId)
-    await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, unavail_reason: null }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, unavail_reason: null })
     patchItemLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity, unavail_reason: null })
     // fulfilled from existing stock: no production added; stock will be reduced on dispatch.
     // reflect the reservation locally so the prompt updates
@@ -78,42 +94,43 @@ export default function KitchenPage() {
   async function setReady(item, orderId) {
     setEditing(null)
     await ensureStarted(orderId)
-    await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, unavail_reason: null }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, unavail_reason: null })
     patchItemLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity, unavail_reason: null })
     bumpStock(item, Number(item.quantity), 'produced')
   }
   async function confirmShort(item, orderId, qty) {
     await ensureStarted(orderId)
-    await supabase.from('order_items').update({ dispatch_status: 'short', status: 'done', fulfilled_qty: qty, unavail_reason: null }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'short', status: 'done', fulfilled_qty: qty, unavail_reason: null })
     patchItemLocal(item.id, { dispatch_status: 'short', fulfilled_qty: qty, unavail_reason: null })
     bumpStock(item, Number(qty), 'produced')
     setEditing(null)
   }
   async function confirmNone(item, orderId, reason) {
     await ensureStarted(orderId)
-    await supabase.from('order_items').update({ dispatch_status: 'unavailable', status: 'done', fulfilled_qty: 0, unavail_reason: reason }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'unavailable', status: 'done', fulfilled_qty: 0, unavail_reason: reason })
     patchItemLocal(item.id, { dispatch_status: 'unavailable', fulfilled_qty: 0, unavail_reason: reason })
     setEditing(null)
   }
   async function resetItem(item) {
     setEditing(null)
-    await supabase.from('order_items').update({ dispatch_status: 'pending', status: 'pending', fulfilled_qty: null, unavail_reason: null }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'pending', status: 'pending', fulfilled_qty: null, unavail_reason: null })
     patchItemLocal(item.id, { dispatch_status: 'pending', fulfilled_qty: null, unavail_reason: null })
   }
   async function completeOrder(orderId) {
-    await supabase.from('orders').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', orderId)
-    patchOrderLocal(orderId, { status: 'completed' })
-  }
-  function patchOrderLocal(orderId, fields) {
-    setOrders(os => os.map(o => o.id === orderId ? { ...o, ...fields } : o))
+    const { error } = await patchRow('orders', orderId, { status: 'completed', completed_at: new Date().toISOString() })
+    if (error) { alert(error.message); return }
+    setOrders(os => os.filter(o => o.id !== orderId))
+    if (showCompleted) loadCompleted()
   }
   async function reopenOrder(orderId) {
-    await supabase.from('orders').update({ status: 'in_progress', completed_at: null }).eq('id', orderId)
-    patchOrderLocal(orderId, { status: 'in_progress' })
+    const { error } = await patchRow('orders', orderId, { status: 'in_progress', completed_at: null })
+    if (error) { alert(error.message); return }
+    setCompleted(cs => cs.filter(o => o.id !== orderId))
+    load()
   }
 
   async function finishWeek() {
-    const open = orders.filter(o => o.status !== 'completed')
+    const open = orders
     const blocked = open.filter(o => o.items.some(i => i.dispatch_status === 'pending'))
     if (blocked.length) {
       const names = [...new Set(blocked.map(o => o.location?.name_en))].join(', ')
@@ -124,12 +141,14 @@ export default function KitchenPage() {
     if (!confirm(`Finish kitchen for the week? This marks ${open.length} handled order(s) as complete. (Dispatch still sends them out; weekly archive stays on the Dispatch page.)`)) return
     const ids = open.map(o => o.id)
     const now = new Date().toISOString()
-    await supabase.from('orders').update({ status: 'completed', completed_at: now }).in('id', ids)
-    setOrders(os => os.map(o => ids.includes(o.id) ? { ...o, status: 'completed' } : o))
+    const { error } = await supabase.from('orders').update({ status: 'completed', completed_at: now }).in('id', ids)
+    if (error) { alert(error.message); return }
+    setOrders([])
+    if (showCompleted) loadCompleted()
   }
 
   async function sendToProcurement(item, order, targetLocId) {
-    const { error } = await supabase.from('procurement_tasks').insert({
+    const { error } = await insertRow('procurement_tasks', {
       item_name: item.item_name_snapshot,
       catalog_item_id: item.catalog_item_id || null,
       quantity: item.quantity,
@@ -140,13 +159,13 @@ export default function KitchenPage() {
       created_by: (await supabase.auth.getUser()).data.user?.id
     })
     if (error) { alert(error.message); return }
-    await supabase.from('order_items').update({ dispatch_status: 'procuring', status: 'done' }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'procuring', status: 'done' })
     patchItemLocal(item.id, { dispatch_status: 'procuring' })
     setProcureFor(null)
   }
 
   async function saveQty(item, qty) {
-    await supabase.from('order_items').update({ quantity: qty }).eq('id', item.id)
+    await patchRow('order_items', item.id, { quantity: qty })
     patchItemLocal(item.id, { quantity: qty })
     setEditing(null)
   }
@@ -157,16 +176,18 @@ export default function KitchenPage() {
   }
   async function cancelOrder(orderId) {
     if (!confirm('Cancel this whole order? It will move to the cancelled list (recoverable).')) return
-    await supabase.from('orders').update({ status: 'cancelled' }).eq('id', orderId)
+    await patchRow('orders', orderId, { status: 'cancelled' })
     setOrders(os => os.filter(o => o.id !== orderId))
   }
   async function loadCancelled() {
-    const { data } = await supabase.from('orders').select(SELECT)
-      .eq('status', 'cancelled').order('created_at', { ascending: false }).limit(30)
-    setCancelled(data || [])
+    const data = await fetchList('orders', {
+      select: SELECT,
+      build: q => q.eq('status', 'cancelled').order('created_at', { ascending: false }).limit(30)
+    })
+    setCancelled(data)
   }
   async function restoreOrder(orderId) {
-    await supabase.from('orders').update({ status: 'submitted' }).eq('id', orderId)
+    await patchRow('orders', orderId, { status: 'submitted' })
     setCancelled(cs => cs.filter(o => o.id !== orderId))
     load()
   }
@@ -175,6 +196,13 @@ export default function KitchenPage() {
     setShowCancelled(next)
     if (next) loadCancelled()
   }
+
+  const visibleOrders = showCompleted ? completed : orders
+
+  const { list: groupedList, meta: groupMeta } = useMemo(
+    () => buildOrderGroups(visibleOrders, thisMonday(), showCompleted),
+    [visibleOrders, showCompleted]
+  )
 
   if (loading) return <div className="tickets"><SkeletonCards count={5} /></div>
 
@@ -188,7 +216,7 @@ export default function KitchenPage() {
         {view === 'orders' ? (
           <div className="seg">
             <button className={!showCompleted ? 'on' : ''} onClick={() => setShowCompleted(false)}>Open</button>
-            <button className={showCompleted ? 'on' : ''} onClick={() => setShowCompleted(true)}>Completed</button>
+            <button className={showCompleted ? 'on' : ''} onClick={() => { setShowCompleted(true); loadCompleted() }}>Completed</button>
           </div>
         ) : (
           <div className="seg">
@@ -205,43 +233,22 @@ export default function KitchenPage() {
         </div>
       </div>
 
-      {view === 'items' && <ByItem orders={orders.filter(o => o.status !== 'completed')} range={range} onChanged={load} />}
+      {view === 'items' && <ByItem orders={orders} range={range} onChanged={load} />}
 
-      {view === 'orders' && !showCompleted && orders.filter(o => o.status !== 'completed').length === 0 && <div className="center muted">No open orders. 🎉</div>}
-      {view === 'orders' && showCompleted && orders.filter(o => o.status === 'completed').length === 0 && <div className="center muted">No completed orders yet this week.</div>}
+      {view === 'orders' && !showCompleted && orders.length === 0 && <div className="center muted">No open orders. 🎉</div>}
+      {view === 'orders' && showCompleted && completed.length === 0 && <div className="center muted">No completed orders yet this week.</div>}
       {view === 'orders' && (() => {
-        const tm = thisMonday()
-        const bucketOf = o => {
-          if (o.order_type === 'urgent' || o.parent_order_id) return 0
-          if (o.order_type === 'event') return 1
-          const pw = o.production_week
-          if (!pw || pw <= tm) return 2
-          return 3
-        }
-        const BLABEL = { 0: '🔥 Urgent — handle now', 1: '🎉 Event orders', 2: "📅 This week's production", 3: '📅 Next week' }
-        const gkey = o => bucketOf(o) + '|' + (o.location?.name_en || '—')
-        const list = orders.filter(o => showCompleted ? o.status === 'completed' : o.status !== 'completed')
-          .slice().sort((a, b) =>
-            bucketOf(a) - bucketOf(b) ||
-            (a.location?.name_en || '').localeCompare(b.location?.name_en || '') ||
-            new Date(a.created_at) - new Date(b.created_at))
-        const meta = {}
-        for (const o of list) {
-          const kk = gkey(o)
-          if (!meta[kk]) meta[kk] = { count: 0, items: {}, loc: o.location?.name_en || '—' }
-          meta[kk].count++
-          for (const it of o.items) meta[kk].items[it.item_name_snapshot] = (meta[kk].items[it.item_name_snapshot] || 0) + Number(it.quantity)
-        }
         let lastB = null, lastK = null
-        return list.map(o => {
+        return groupedList.map(o => {
         const isDone = o.status === 'completed'
         const handled = o.items.filter(i => i.dispatch_status !== 'pending').length
         const allHandled = o.items.length > 0 && handled === o.items.length
         const n = s => o.items.filter(i => i.dispatch_status === s).length
         const pend = n('pending'), rdy = n('ready'), sh = n('short'), un = n('unavailable'), dis = n('dispatched')
         const proc = n('procuring')
-        const b = bucketOf(o); const sep = b !== lastB ? (lastB = b, BLABEL[b]) : null
-        const k = gkey(o); const m = meta[k]
+        const tm = thisMonday()
+        const b = bucketOf(o, tm); const sep = b !== lastB ? (lastB = b, BUCKET_LABELS[b]) : null
+        const k = groupKey(o, tm); const m = groupMeta[k]
         const newGroup = k !== lastK; if (newGroup) lastK = k
         const multi = m.count >= 2
         const isOpen = expanded[k] ?? !multi
@@ -440,64 +447,53 @@ export default function KitchenPage() {
 }
 
 // ---------- By-item production aggregation ----------
-function startOfWeek(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x}
-function inThisWeek(iso){const d=new Date(iso);const s=startOfWeek(new Date());const e=new Date(s);e.setDate(e.getDate()+7);return d>=s&&d<e}
-
 function ByItem({ orders, range, onChanged }) {
-  const scope = range === 'week' ? orders.filter(o => inThisWeek(o.created_at)) : orders
-
-  // aggregate
-  const groups = new Map()   // key -> {name, unit, type, total, byLoc:Map, itemIds:[], locItems:[]}
-  const adhoc = []
-  for (const o of scope) {
-    const loc = o.location?.name_en || '—'
-    for (const it of o.items) {
-      if (!it.catalog_item_id) { adhoc.push({ ...it, loc }); continue }
-      const key = it.catalog_item_id + '|' + (it.unit_snapshot || '')
-      if (!groups.has(key)) groups.set(key, { name: it.item_name_snapshot, unit: it.unit_snapshot || '', type: it.fulfillment_type, total: 0, byLoc: new Map(), itemIds: [], locItems: [] })
-      const g = groups.get(key)
-      g.total += Number(it.quantity) || 0
-      g.byLoc.set(loc, (g.byLoc.get(loc) || 0) + (Number(it.quantity) || 0))
-      g.itemIds.push(it.id)
-      g.locItems.push({ id: it.id, loc, qty: Number(it.quantity) || 0, status: it.dispatch_status })
-      if (!g.type && it.fulfillment_type) g.type = it.fulfillment_type
-    }
-  }
-  const all = [...groups.values()]
-  const make = all.filter(g => g.type === 'make')
-  const buy = all.filter(g => g.type === 'purchase')
-  const unsorted = all.filter(g => !g.type)
+  const scope = useMemo(
+    () => range === 'week' ? orders.filter(o => inThisWeek(o.created_at)) : orders,
+    [orders, range]
+  )
+  const { make, buy, unsorted, adhoc } = useMemo(() => aggregateByItem(scope), [scope])
 
   async function sendAllToBuyer() {
     if (!buy.length) return
     if (!confirm(`Send ${buy.length} purchase item(s) to the buyer's list?`)) return
     const uid = (await supabase.auth.getUser()).data.user?.id
-    for (const g of buy) {
-      await supabase.from('procurement_tasks').insert({
+    // groups are independent of each other, so fire them concurrently instead
+    // of one-at-a-time
+    await Promise.all(buy.map(async g => {
+      await insertRow('procurement_tasks', {
         item_name: g.name, quantity: g.total, unit: g.unit || null,
         target_location_id: null, created_by: uid, note: 'from weekly production aggregate'
       })
       await supabase.from('order_items').update({ dispatch_status: 'procuring', status: 'done' }).in('id', g.itemIds)
-    }
+    }))
     onChanged()
   }
 
   // mark every store's line for this product as fully ready
   async function markGroupReady(g) {
     await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done' }).in('id', g.itemIds)
-    // ready means fulfilled = ordered qty; set per row to be exact
-    for (const li of g.locItems)
-      await supabase.from('order_items').update({ fulfilled_qty: li.qty }).eq('id', li.id)
+    // ready means fulfilled = ordered qty; set per row to be exact. Values
+    // differ per row so this can't be one bulk .update(), but a single
+    // upsert still does it in one round trip instead of N sequential ones.
+    if (g.locItems.length) {
+      await supabase.from('order_items').upsert(g.locItems.map(li => ({ id: li.id, fulfilled_qty: li.qty })))
+    }
     onChanged()
   }
   // apply per-store actual quantities: full -> ready, less -> short
   async function applyPartial(g, made) {   // made: { itemId: qty }
+    const readyRows = [], shortRows = []
     for (const li of g.locItems) {
       const got = Number(made[li.id])
       if (isNaN(got)) continue
-      if (got >= li.qty) await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done', fulfilled_qty: li.qty }).eq('id', li.id)
-      else await supabase.from('order_items').update({ dispatch_status: 'short', status: 'done', fulfilled_qty: got }).eq('id', li.id)
+      if (got >= li.qty) readyRows.push({ id: li.id, dispatch_status: 'ready', status: 'done', fulfilled_qty: li.qty })
+      else shortRows.push({ id: li.id, dispatch_status: 'short', status: 'done', fulfilled_qty: got })
     }
+    await Promise.all([
+      readyRows.length ? supabase.from('order_items').upsert(readyRows) : null,
+      shortRows.length ? supabase.from('order_items').upsert(shortRows) : null
+    ].filter(Boolean))
     onChanged()
   }
 

@@ -1,46 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchList, patchRow } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { downloadCSV, today } from '../lib/csv'
+import { expiryState, rowExpiry, isLow, fmtTotal } from '../lib/inventory'
 import { SkeletonRows } from '../components/Skeleton'
-
-const DAY = 86400000
-function expiryState(expires_on) {
-  if (!expires_on) return { cls: '', label: '' }
-  const days = Math.floor((new Date(expires_on + 'T00:00:00') - new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00')) / DAY)
-  if (days < 0) return { cls: 'expired', label: `expired ${-days}d ago` }
-  if (days === 0) return { cls: 'expsoon', label: 'today' }
-  if (days <= 7) return { cls: 'expsoon', label: `${days}d left` }
-  return { cls: '', label: `${days}d left` }
-}
-// earliest-expiring batch state for a row
-function rowExpiry(batches) {
-  let worst = { cls: '', label: '' }
-  for (const b of batches || []) {
-    const s = expiryState(b.expires_on)
-    if (s.cls === 'expired') return s
-    if (s.cls === 'expsoon') worst = s
-  }
-  return worst
-}
-
-const isLow = (qty, reorder) => {
-  const q = Number(qty)
-  const t = reorder == null || reorder === '' ? 1 : Number(reorder)
-  return q <= t
-}
-
-const fmtTotal = (qty, i) => {
-  const w = Number(i.unit_weight)
-  if (!w || !Number(qty)) return null
-  // pcs: count pieces instead of weight
-  if (i.weight_unit === 'pcs') {
-    const total = w * Number(qty)
-    return `${total % 1 === 0 ? total : total.toFixed(1)} pcs`
-  }
-  const grams = w * Number(qty) * (i.weight_unit === 'kg' ? 1000 : 1)
-  return grams >= 1000 ? `${(grams / 1000).toFixed(grams % 1000 === 0 ? 0 : 2)} kg` : `${Math.round(grams)} g`
-}
 
 export default function InventoryPage() {
   const { role, locationId } = useAuth()
@@ -66,15 +30,14 @@ export default function InventoryPage() {
   // bootstrap: locations (for picker) + catalog specs
   useEffect(() => {
     (async () => {
-      const [{ data: l }, { data: c }] = await Promise.all([
-        supabase.from('locations').select('id,name_en,is_central').eq('is_active', true).order('is_central', { ascending: false }).order('name_en'),
-        supabase.from('catalog_items').select('id,name_en,name_hu,stock_unit,unit_weight,weight_unit,shelf_life_days,storage_location,reorder_level,category:categories(name_en)')
-          .eq('is_active', true).order('name_en')
+      const [l, c] = await Promise.all([
+        fetchList('locations', { select: 'id,name_en,is_central', build: q => q.eq('is_active', true).order('is_central', { ascending: false }).order('name_en') }),
+        fetchList('catalog_items', { select: 'id,name_en,name_hu,stock_unit,unit_weight,weight_unit,shelf_life_days,storage_location,reorder_level,category:categories(name_en)', build: q => q.eq('is_active', true).order('name_en') })
       ])
-      setLocs(l || []); setCatalog(c || [])
+      setLocs(l); setCatalog(c)
       if (!locId) {
-        const central = (l || []).find(x => x.is_central)
-        setLocId(locationId || central?.id || (l || [])[0]?.id || '')
+        const central = l.find(x => x.is_central)
+        setLocId(locationId || central?.id || l[0]?.id || '')
       }
     })()
   }, [])
@@ -84,13 +47,13 @@ export default function InventoryPage() {
   async function load() {
     if (!locId) return
     setLoading(true)
-    const [{ data: ls }, { data: batches }] = await Promise.all([
-      supabase.from('location_stock').select('catalog_item_id, qty, storage_location, reorder_level').eq('location_id', locId),
-      supabase.from('stock_batches').select('id, catalog_item_id, qty, produced_on, expires_on').eq('location_id', locId).gt('qty', 0).order('expires_on', { nullsFirst: false })
+    const [ls, batches] = await Promise.all([
+      fetchList('location_stock', { select: 'catalog_item_id, qty, storage_location, reorder_level', build: q => q.eq('location_id', locId) }),
+      fetchList('stock_batches', { select: 'id, catalog_item_id, qty, produced_on, expires_on', build: q => q.eq('location_id', locId).gt('qty', 0).order('expires_on', { nullsFirst: false }) })
     ])
     const byItem = {}
-    for (const b of batches || []) (byItem[b.catalog_item_id] ||= []).push(b)
-    setRows((ls || []).map(r => ({ ...r, batches: byItem[r.catalog_item_id] || [] })))
+    for (const b of batches) (byItem[b.catalog_item_id] ||= []).push(b)
+    setRows(ls.map(r => ({ ...r, batches: byItem[r.catalog_item_id] || [] })))
     setLoading(false)
   }
   useEffect(() => { load() }, [locId])
@@ -136,7 +99,7 @@ export default function InventoryPage() {
   async function editBatchQty(batch, newQty, itemId) {
     const n = Number(newQty)
     if (isNaN(n) || n < 0) return
-    await supabase.from('stock_batches').update({ qty: n }).eq('id', batch.id)
+    await patchRow('stock_batches', batch.id, { qty: n })
     await supabase.rpc('sync_loc_qty', { p_loc: locId, p_item: itemId })
     await load()
   }
@@ -376,7 +339,7 @@ function Overview({ locs, catMap }) {
   const [mode, setMode] = useState('item')   // item | site
   const [data, setData] = useState(null)
   useEffect(() => {
-    supabase.from('location_stock').select('location_id, catalog_item_id, qty, reorder_level').then(({ data }) => setData(data || []))
+    fetchList('location_stock', { select: 'location_id, catalog_item_id, qty, reorder_level' }).then(setData)
   }, [])
   if (!data) return <div className="center muted">Loading…</div>
 
@@ -482,22 +445,23 @@ function Receiving({ canPickLoc, locs, myLoc, catMap, onReceived }) {
   async function load() {
     if (!locId) return
     setLoading(true)
-    const [{ data: items }, { data: rets }] = await Promise.all([
-      supabase.from('order_items')
-        .select('id, catalog_item_id, item_name_snapshot, unit_snapshot, quantity, fulfilled_qty, fulfillment_type, dispatch_status, order:orders!inner(location_id, location:locations(name_en), created_at)')
-        .eq('dispatch_status', 'dispatched').eq('order.location_id', locId)
-        .order('id', { ascending: false }),
-      supabase.from('stock_returns')
-        .select('id, catalog_item_id, qty, expires_on, created_at, from_location, from:locations!stock_returns_from_location_fkey(name_en)')
-        .eq('status', 'pending').eq('to_location', locId)
+    const [items, rets] = await Promise.all([
+      fetchList('order_items', {
+        select: 'id, catalog_item_id, item_name_snapshot, unit_snapshot, quantity, fulfilled_qty, fulfillment_type, dispatch_status, order:orders!inner(location_id, location:locations(name_en), created_at)',
+        build: q => q.eq('dispatch_status', 'dispatched').eq('order.location_id', locId).order('id', { ascending: false })
+      }),
+      fetchList('stock_returns', {
+        select: 'id, catalog_item_id, qty, expires_on, created_at, from_location, from:locations!stock_returns_from_location_fkey(name_en)',
+        build: q => q.eq('status', 'pending').eq('to_location', locId)
+      })
     ])
-    setRows(items || []); setReturns(rets || []); setLoading(false)
+    setRows(items); setReturns(rets); setLoading(false)
   }
   useEffect(() => { load() }, [locId])
 
   async function receive(item) {
     const qty = Number(item.fulfilled_qty ?? item.quantity) || 0
-    await supabase.from('order_items').update({ dispatch_status: 'received' }).eq('id', item.id)
+    await patchRow('order_items', item.id, { dispatch_status: 'received' })
     if (item.catalog_item_id && qty) {
       await supabase.rpc('add_batch', { p_loc: locId, p_item: item.catalog_item_id, p_qty: qty, p_produced: new Date().toISOString().slice(0,10), p_expires: null, p_note: 'received' })
     }
@@ -512,7 +476,10 @@ function Receiving({ canPickLoc, locs, myLoc, catMap, onReceived }) {
   async function receiveAll() {
     if (!rows.length) return
     if (!confirm(`Confirm receiving all ${rows.length} item(s)? Stock will be added to this location.`)) return
-    for (const it of rows) await receive(it)
+    // add_batch is additive (new batch row + qty bump) so order doesn't
+    // matter across different deliveries — safe to fire concurrently,
+    // unlike FIFO consumption which must stay serial.
+    await Promise.all(rows.map(it => receive(it)))
   }
 
   const locName = locs.find(l => l.id === locId)?.name_en || ''

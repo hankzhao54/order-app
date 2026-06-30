@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
+import { fetchList, patchRow, insertRow } from '../../lib/db'
 
 export default function SuppliersAdmin() {
   const [rows, setRows] = useState([])
@@ -9,21 +9,21 @@ export default function SuppliersAdmin() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('suppliers').select('*').order('name')
-    setRows(data || []); setLoading(false)
+    const data = await fetchList('suppliers', { build: q => q.order('name') })
+    setRows(data); setLoading(false)
   }
   useEffect(() => { load() }, [])
 
   function set(id, fields) { setRows(p => p.map(x => x.id === id ? { ...x, ...fields } : x)) }
   async function patch(id, fields) {
     set(id, fields)
-    const { error } = await supabase.from('suppliers').update(fields).eq('id', id)
+    const { error } = await patchRow('suppliers', id, fields)
     if (error) setMsg(error.message)
   }
   async function add() {
     setMsg('')
     if (!form.name.trim()) { setMsg('Supplier name is required.'); return }
-    const { error } = await supabase.from('suppliers').insert({ name: form.name.trim(), contact: form.contact.trim() || null, note: form.note.trim() || null })
+    const { error } = await insertRow('suppliers', { name: form.name.trim(), contact: form.contact.trim() || null, note: form.note.trim() || null })
     if (error) { setMsg(error.message); return }
     setForm({ name: '', contact: '', note: '' }); load()
   }

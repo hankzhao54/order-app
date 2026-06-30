@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchList, patchRow, insertRow } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
 
@@ -11,7 +12,8 @@ export default function ProcurementPage() {
   const isDriver = role === 'driver'
   const canAdd = ['restaurant_orderer', 'kitchen_manager', 'admin'].includes(role)
 
-  const [tasks, setTasks] = useState([])
+  const [tasks, setTasks] = useState([])     // pending tasks only
+  const [done, setDone] = useState([])       // bought/unavailable, lazy-loaded
   const [locations, setLocations] = useState([])
   const [catalog, setCatalog] = useState([])
   const [loading, setLoading] = useState(true)
@@ -24,36 +26,47 @@ export default function ProcurementPage() {
 
   async function load() {
     setLoading(true)
-    const [{ data: t }, { data: l }, { data: c }] = await Promise.all([
-      supabase.from('procurement_tasks').select(SELECT).order('created_at', { ascending: false }),
-      supabase.from('locations').select('id,name_en,is_central').eq('is_active', true).order('name_en'),
-      supabase.from('catalog_items').select('id,name_en,name_hu,order_unit').eq('is_active', true).order('name_en')
+    const [t, l, c] = await Promise.all([
+      fetchList('procurement_tasks', { select: SELECT, build: q => q.eq('status', 'pending').order('created_at', { ascending: false }) }),
+      fetchList('locations', { select: 'id,name_en,is_central', build: q => q.eq('is_active', true).order('name_en') }),
+      fetchList('catalog_items', { select: 'id,name_en,name_hu,order_unit', build: q => q.eq('is_active', true).order('name_en') })
     ])
-    setTasks(t || []); setLocations(l || []); setCatalog(c || [])
+    setTasks(t); setLocations(l); setCatalog(c)
     setLoading(false)
   }
+  async function loadDone() {
+    const d = await fetchList('procurement_tasks', {
+      select: SELECT,
+      build: q => q.neq('status', 'pending').order('created_at', { ascending: false }).limit(50)
+    })
+    setDone(d)
+  }
   useEffect(() => { load() }, [])
-  useRealtimeReload(['procurement_tasks'], load, editingNone !== null)
+  useRealtimeReload(['procurement_tasks'], () => { load(); if (showDone) loadDone() }, editingNone !== null)
 
   function patch(id, fields) { setTasks(ts => ts.map(t => t.id === id ? { ...t, ...fields } : t)) }
 
   async function markBought(t) {
-    await supabase.from('procurement_tasks').update({ status: 'bought', bought_by: user.id }).eq('id', t.id)
+    const { error } = await patchRow('procurement_tasks', t.id, { status: 'bought', bought_by: user.id })
+    if (error) { alert(error.message); return }
     // if this task came from an order line, send that line back to the dispatch desk as "ready"
     if (t.source_order_item_id) {
-      await supabase.from('order_items')
-        .update({ dispatch_status: 'ready', status: 'done', fulfilled_qty: t.quantity, handled_by: user.id })
-        .eq('id', t.source_order_item_id)
+      await patchRow('order_items', t.source_order_item_id, { dispatch_status: 'ready', status: 'done', fulfilled_qty: t.quantity, handled_by: user.id })
     }
-    patch(t.id, { status: 'bought' })
+    setTasks(ts => ts.filter(x => x.id !== t.id))
+    if (showDone) loadDone()
   }
   async function markUnavailable(t, reason) {
-    await supabase.from('procurement_tasks').update({ status: 'unavailable', unavail_reason: reason, bought_by: user.id }).eq('id', t.id)
-    patch(t.id, { status: 'unavailable', unavail_reason: reason }); setEditingNone(null)
+    const { error } = await patchRow('procurement_tasks', t.id, { status: 'unavailable', unavail_reason: reason, bought_by: user.id })
+    if (error) { alert(error.message); return }
+    setTasks(ts => ts.filter(x => x.id !== t.id)); setEditingNone(null)
+    if (showDone) loadDone()
   }
   async function reopen(t) {
-    await supabase.from('procurement_tasks').update({ status: 'pending', unavail_reason: null }).eq('id', t.id)
-    patch(t.id, { status: 'pending', unavail_reason: null })
+    const { error } = await patchRow('procurement_tasks', t.id, { status: 'pending', unavail_reason: null })
+    if (error) { alert(error.message); return }
+    setDone(ds => ds.filter(x => x.id !== t.id))
+    load()
   }
   async function removeTask(t) {
     if (!confirm(`Remove "${t.item_name}" from the buy list?`)) return
@@ -77,14 +90,13 @@ export default function ProcurementPage() {
       target_location_id: form.target_location_id || null,
       created_by: user.id
     }
-    const { data, error } = await supabase.from('procurement_tasks').insert(row).select(SELECT).single()
+    const { data, error } = await insertRow('procurement_tasks', row, { select: SELECT })
     if (error) { alert(error.message); return }
     setTasks(ts => [data, ...ts])
     setForm({ item_name: '', catalog_item_id: '', quantity: 1, unit: '', target_location_id: '' }); setPick('')
   }
 
-  const pending = tasks.filter(t => t.status === 'pending')
-  const done = tasks.filter(t => t.status !== 'pending')
+  const pending = tasks
 
   // group pending by target location
   const grouped = useMemo(() => {
@@ -127,7 +139,7 @@ export default function ProcurementPage() {
 
       <div className="toolbar">
         <span className="muted">{pending.length} to buy</span>
-        <label className="inline"><input type="checkbox" checked={showDone} onChange={e => setShowDone(e.target.checked)} /> show done</label>
+        <label className="inline"><input type="checkbox" checked={showDone} onChange={e => { const v = e.target.checked; setShowDone(v); if (v) loadDone() }} /> show done</label>
       </div>
 
       {grouped.size === 0 && <div className="center muted">Nothing to buy right now.</div>}
