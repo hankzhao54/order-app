@@ -4,6 +4,7 @@ import { fetchList, patchRow } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { downloadCSV, today } from '../lib/csv'
 import { expiryState, rowExpiry, isLow, fmtTotal } from '../lib/inventory'
+import { transitionItem } from '../lib/orderLifecycle'
 import { SkeletonRows } from '../components/Skeleton'
 
 export default function InventoryPage() {
@@ -461,7 +462,7 @@ function Receiving({ canPickLoc, locs, myLoc, catMap, onReceived }) {
 
   async function receive(item) {
     const qty = Number(item.fulfilled_qty ?? item.quantity) || 0
-    await patchRow('order_items', item.id, { dispatch_status: 'received' })
+    await transitionItem(item, 'received')
     if (item.catalog_item_id && qty) {
       await supabase.rpc('add_batch', { p_loc: locId, p_item: item.catalog_item_id, p_qty: qty, p_produced: new Date().toISOString().slice(0,10), p_expires: null, p_note: 'received' })
     }

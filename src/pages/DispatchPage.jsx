@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchList, patchRow } from '../lib/db'
+import { fetchList } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
+import {
+  transitionOrdersBulk, transitionItem, transitionItemsBulk,
+  isItemPending, isItemReadyToDispatch, isItemWeekCloseTerminal
+} from '../lib/orderLifecycle'
 
 const SELECT = `id, order_type, status, created_at, parent_order_id,
   location_id, location:locations(name_en),
@@ -10,8 +14,6 @@ const SELECT = `id, order_type, status, created_at, parent_order_id,
                     dispatch_status, fulfilled_qty, unavail_reason)`
 
 const REASONS = ['Out of stock', "Can't make", 'Not found']
-// terminal = ok to archive at week close
-const TERMINAL = ['dispatched', 'received', 'unavailable']
 
 export default function DispatchPage() {
   const { user, role } = useAuth()
@@ -38,11 +40,11 @@ export default function DispatchPage() {
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => i.id === itemId ? { ...i, ...fields } : i) })))
   }
   async function markReady(item) {
-    await patchRow('order_items', item.id, { dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, handled_by: user.id })
+    await transitionItem(item, 'ready', { fulfilled_qty: item.quantity, handled_by: user.id })
     patchLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity })
   }
   async function markUnavailable(item, reason) {
-    await patchRow('order_items', item.id, { dispatch_status: 'unavailable', status: 'done', fulfilled_qty: 0, unavail_reason: reason, handled_by: user.id })
+    await transitionItem(item, 'unavailable', { fulfilled_qty: 0, unavail_reason: reason, handled_by: user.id })
     patchLocal(item.id, { dispatch_status: 'unavailable', unavail_reason: reason }); setReasonFor(null)
   }
   async function centralLoc() {
@@ -50,7 +52,7 @@ export default function DispatchPage() {
     return data?.id || null
   }
   async function dispatchItem(item) {
-    await patchRow('order_items', item.id, { dispatch_status: 'dispatched' })
+    await transitionItem(item, 'dispatched')
     patchLocal(item.id, { dispatch_status: 'dispatched' })
     if (item.catalog_item_id && item.fulfillment_type === 'make') {
       const qty = Number(item.fulfilled_qty ?? item.quantity) || 0
@@ -59,10 +61,10 @@ export default function DispatchPage() {
     }
   }
   async function dispatchAllReady(locItems) {
-    const ready = locItems.filter(i => ['ready', 'short'].includes(i.dispatch_status))
+    const ready = locItems.filter(i => isItemReadyToDispatch(i.dispatch_status))
     const ids = ready.map(i => i.id)
     if (!ids.length) return
-    await supabase.from('order_items').update({ dispatch_status: 'dispatched' }).in('id', ids)
+    await transitionItemsBulk(ready, 'dispatched')
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => ids.includes(i.id) ? { ...i, dispatch_status: 'dispatched' } : i) })))
     const c = await centralLoc()
     // consume_fifo mutates shared stock-batch state for (location, item), so
@@ -106,7 +108,7 @@ export default function DispatchPage() {
   // ---- week close (archive) ----
   const unfinished = useMemo(() => {
     let n = 0
-    for (const o of orders) for (const it of o.items) if (!TERMINAL.includes(it.dispatch_status)) n++
+    for (const o of orders) for (const it of o.items) if (!isItemWeekCloseTerminal(it.dispatch_status)) n++
     return n
   }, [orders])
 
@@ -114,10 +116,9 @@ export default function DispatchPage() {
     if (unfinished > 0) { setMsg(`Can't close: ${unfinished} item(s) still not dispatched or marked unavailable. Handle them first.`); return }
     if (!orders.length) { setMsg('Nothing to close.'); return }
     if (!confirm(`Close & archive ${orders.length} order(s)? They move to History (by week) and clear from here.`)) return
-    const ids = orders.map(o => o.id)
-    const { error } = await supabase.from('orders').update({ status: 'archived' }).in('id', ids)
+    const { error } = await transitionOrdersBulk(orders, 'archived')
     if (error) { setMsg(error.message); return }
-    setMsg(`✓ Archived ${ids.length} order(s). New week starts clean.`); load()
+    setMsg(`✓ Archived ${orders.length} order(s). New week starts clean.`); load()
   }
 
   const byLocation = useMemo(() => {
@@ -152,15 +153,15 @@ export default function DispatchPage() {
       {[...byLocation.values()].map((loc, idx) => {
         const make = loc.items.filter(i => i.fulfillment_type === 'make' || !i.fulfillment_type)
         const buy = loc.items.filter(i => i.fulfillment_type === 'purchase')
-        const readyN = loc.items.filter(i => ['ready', 'short'].includes(i.dispatch_status)).length
+        const readyN = loc.items.filter(i => isItemReadyToDispatch(i.dispatch_status)).length
         const shared = { showDispatched, isDriver, isStaff, reasonFor, setReasonFor, markReady, markUnavailable, dispatchItem }
         return (
           <div className="dcard" key={idx}>
             <div className="dhead">
               <h3>{loc.name}</h3>
               <div className="dcounts">
-                <span className="cnt ok">✅ {loc.items.filter(i => ['ready', 'short'].includes(i.dispatch_status)).length}</span>
-                <span className="cnt wait">⏳ {loc.items.filter(i => i.dispatch_status === 'pending').length}</span>
+                <span className="cnt ok">✅ {loc.items.filter(i => isItemReadyToDispatch(i.dispatch_status)).length}</span>
+                <span className="cnt wait">⏳ {loc.items.filter(i => isItemPending(i.dispatch_status)).length}</span>
                 <span className="cnt buy2">🛒 {loc.items.filter(i => i.dispatch_status === 'procuring').length}</span>
                 <span className="cnt warn">⚠️ {loc.items.filter(i => i.dispatch_status === 'unavailable').length}</span>
                 <span className="cnt sent">📦 {loc.items.filter(i => i.dispatch_status === 'dispatched').length}</span>
@@ -206,7 +207,7 @@ function Column({ title, items, showDispatched, isDriver, isStaff, reasonFor, se
                 </>
               )}
 
-              {i.dispatch_status === 'pending' && reasonFor !== i.id && (
+              {isItemPending(i.dispatch_status) && reasonFor !== i.id && (
                 <>
                   <button className="mini ok" onClick={() => markReady(i)}>{isBuy ? '✓ Bought' : '✓ Ready'}</button>
                   <button className="mini bad" onClick={() => setReasonFor(i.id)}>✕ None</button>
@@ -219,7 +220,7 @@ function Column({ title, items, showDispatched, isDriver, isStaff, reasonFor, se
                 </div>
               )}
 
-              {['ready', 'short'].includes(i.dispatch_status) &&
+              {isItemReadyToDispatch(i.dispatch_status) &&
                 <button className="mini send" onClick={() => dispatchItem(i)}>📦 Delivered</button>}
               {i.dispatch_status === 'unavailable' && <span className="statuschip bad">needs arranging</span>}
             </div>

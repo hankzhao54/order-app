@@ -5,6 +5,10 @@ import { useRealtimeReload } from '../lib/useRealtimeReload'
 import { thisMonday } from '../lib/cutoff'
 import { BUCKET_LABELS, bucketOf, groupKey, buildOrderGroups, aggregateByItem, inThisWeek } from '../lib/kitchen'
 import { SkeletonCards } from '../components/Skeleton'
+import {
+  transitionOrder, transitionOrdersBulk, transitionItem, transitionItemsBulk, transitionItemsUpsert,
+  canTransitionItem, isItemPending, isItemHandled, isOrderCompleted
+} from '../lib/orderLifecycle'
 
 const SELECT = `id, order_type, status, created_at, parent_order_id, production_week, event_name, event_date,
   location:locations(name_en),
@@ -70,7 +74,7 @@ export default function KitchenPage() {
   async function ensureStarted(orderId) {
     const o = orders.find(x => x.id === orderId)
     if (o && o.status === 'submitted') {
-      await patchRow('orders', orderId, { status: 'in_progress' })
+      await transitionOrder(o, 'in_progress')
       setOrders(os => os.map(x => x.id === orderId ? { ...x, status: 'in_progress' } : x))
     }
   }
@@ -81,7 +85,7 @@ export default function KitchenPage() {
   async function fulfillFromStock(item, orderId) {
     setEditing(null)
     await ensureStarted(orderId)
-    await patchRow('order_items', item.id, { dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, unavail_reason: null })
+    await transitionItem(item, 'ready', { fulfilled_qty: item.quantity, unavail_reason: null })
     patchItemLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity, unavail_reason: null })
     // fulfilled from existing stock: no production added; stock will be reduced on dispatch.
     // reflect the reservation locally so the prompt updates
@@ -94,36 +98,38 @@ export default function KitchenPage() {
   async function setReady(item, orderId) {
     setEditing(null)
     await ensureStarted(orderId)
-    await patchRow('order_items', item.id, { dispatch_status: 'ready', status: 'done', fulfilled_qty: item.quantity, unavail_reason: null })
+    await transitionItem(item, 'ready', { fulfilled_qty: item.quantity, unavail_reason: null })
     patchItemLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity, unavail_reason: null })
     bumpStock(item, Number(item.quantity), 'produced')
   }
   async function confirmShort(item, orderId, qty) {
     await ensureStarted(orderId)
-    await patchRow('order_items', item.id, { dispatch_status: 'short', status: 'done', fulfilled_qty: qty, unavail_reason: null })
+    await transitionItem(item, 'short', { fulfilled_qty: qty, unavail_reason: null })
     patchItemLocal(item.id, { dispatch_status: 'short', fulfilled_qty: qty, unavail_reason: null })
     bumpStock(item, Number(qty), 'produced')
     setEditing(null)
   }
   async function confirmNone(item, orderId, reason) {
     await ensureStarted(orderId)
-    await patchRow('order_items', item.id, { dispatch_status: 'unavailable', status: 'done', fulfilled_qty: 0, unavail_reason: reason })
+    await transitionItem(item, 'unavailable', { fulfilled_qty: 0, unavail_reason: reason })
     patchItemLocal(item.id, { dispatch_status: 'unavailable', fulfilled_qty: 0, unavail_reason: reason })
     setEditing(null)
   }
   async function resetItem(item) {
     setEditing(null)
-    await patchRow('order_items', item.id, { dispatch_status: 'pending', status: 'pending', fulfilled_qty: null, unavail_reason: null })
+    await transitionItem(item, 'pending', { fulfilled_qty: null, unavail_reason: null })
     patchItemLocal(item.id, { dispatch_status: 'pending', fulfilled_qty: null, unavail_reason: null })
   }
   async function completeOrder(orderId) {
-    const { error } = await patchRow('orders', orderId, { status: 'completed', completed_at: new Date().toISOString() })
+    const o = orders.find(x => x.id === orderId)
+    const { error } = await transitionOrder(o, 'completed', { completed_at: new Date().toISOString() })
     if (error) { alert(error.message); return }
     setOrders(os => os.filter(o => o.id !== orderId))
     if (showCompleted) loadCompleted()
   }
   async function reopenOrder(orderId) {
-    const { error } = await patchRow('orders', orderId, { status: 'in_progress', completed_at: null })
+    const o = completed.find(x => x.id === orderId)
+    const { error } = await transitionOrder(o, 'in_progress', { completed_at: null })
     if (error) { alert(error.message); return }
     setCompleted(cs => cs.filter(o => o.id !== orderId))
     load()
@@ -131,7 +137,7 @@ export default function KitchenPage() {
 
   async function finishWeek() {
     const open = orders
-    const blocked = open.filter(o => o.items.some(i => i.dispatch_status === 'pending'))
+    const blocked = open.filter(o => o.items.some(i => isItemPending(i.dispatch_status)))
     if (blocked.length) {
       const names = [...new Set(blocked.map(o => o.location?.name_en))].join(', ')
       alert(`Can't finish: ${blocked.length} order(s) still have unhandled items (${names}). Handle every item first.`)
@@ -139,9 +145,8 @@ export default function KitchenPage() {
     }
     if (!open.length) { alert('Nothing to finish — no open orders.'); return }
     if (!confirm(`Finish kitchen for the week? This marks ${open.length} handled order(s) as complete. (Dispatch still sends them out; weekly archive stays on the Dispatch page.)`)) return
-    const ids = open.map(o => o.id)
     const now = new Date().toISOString()
-    const { error } = await supabase.from('orders').update({ status: 'completed', completed_at: now }).in('id', ids)
+    const { error } = await transitionOrdersBulk(open, 'completed', { completed_at: now })
     if (error) { alert(error.message); return }
     setOrders([])
     if (showCompleted) loadCompleted()
@@ -159,7 +164,7 @@ export default function KitchenPage() {
       created_by: (await supabase.auth.getUser()).data.user?.id
     })
     if (error) { alert(error.message); return }
-    await patchRow('order_items', item.id, { dispatch_status: 'procuring', status: 'done' })
+    await transitionItem(item, 'procuring')
     patchItemLocal(item.id, { dispatch_status: 'procuring' })
     setProcureFor(null)
   }
@@ -176,7 +181,8 @@ export default function KitchenPage() {
   }
   async function cancelOrder(orderId) {
     if (!confirm('Cancel this whole order? It will move to the cancelled list (recoverable).')) return
-    await patchRow('orders', orderId, { status: 'cancelled' })
+    const o = orders.find(x => x.id === orderId)
+    await transitionOrder(o, 'cancelled')
     setOrders(os => os.filter(o => o.id !== orderId))
   }
   async function loadCancelled() {
@@ -187,7 +193,8 @@ export default function KitchenPage() {
     setCancelled(data)
   }
   async function restoreOrder(orderId) {
-    await patchRow('orders', orderId, { status: 'submitted' })
+    const o = cancelled.find(x => x.id === orderId)
+    await transitionOrder(o, 'submitted')
     setCancelled(cs => cs.filter(o => o.id !== orderId))
     load()
   }
@@ -240,8 +247,8 @@ export default function KitchenPage() {
       {view === 'orders' && (() => {
         let lastB = null, lastK = null
         return groupedList.map(o => {
-        const isDone = o.status === 'completed'
-        const handled = o.items.filter(i => i.dispatch_status !== 'pending').length
+        const isDone = isOrderCompleted(o.status)
+        const handled = o.items.filter(i => isItemHandled(i.dispatch_status)).length
         const allHandled = o.items.length > 0 && handled === o.items.length
         const n = s => o.items.filter(i => i.dispatch_status === s).length
         const pend = n('pending'), rdy = n('ready'), sh = n('short'), un = n('unavailable'), dis = n('dispatched')
@@ -336,7 +343,7 @@ export default function KitchenPage() {
                     )}
 
                     {/* stock-first hint */}
-                    {i.dispatch_status === 'pending' && !isEditing && i.fulfillment_type === 'make' && stock[i.catalog_item_id]?.qty > 0 && (
+                    {isItemPending(i.dispatch_status) && !isEditing && i.fulfillment_type === 'make' && stock[i.catalog_item_id]?.qty > 0 && (
                       <div className="stockhint">
                         <span>📦 In stock: <b>{stock[i.catalog_item_id].qty}{stock[i.catalog_item_id].unit ? ` ${stock[i.catalog_item_id].unit}` : ''}</b>. {stock[i.catalog_item_id].qty >= i.quantity
                           ? `Covers all ${i.quantity} — send from stock, no need to make.`
@@ -347,7 +354,7 @@ export default function KitchenPage() {
                     )}
 
                     {/* action row */}
-                    {i.dispatch_status === 'pending' && !isEditing && (
+                    {isItemPending(i.dispatch_status) && !isEditing && (
                       <div className="dispatch-actions">
                         <button className="mini ok" onClick={() => setReady(i, o.id)}>✓ Ready</button>
                         <button className="mini warn" onClick={() => setEditing({ itemId: i.id, mode: 'short', qty: i.quantity })}>≈ Short</button>
@@ -381,7 +388,7 @@ export default function KitchenPage() {
                     )}
 
                     {/* settled status chip */}
-                    {i.dispatch_status !== 'pending' && !isEditing && (
+                    {isItemHandled(i.dispatch_status) && !isEditing && (
                       <div className="dispatch-actions">
                         <span className="statuschip" onClick={() => resetItem(i)} title="tap to redo">
                           {i.dispatch_status === 'ready' && '✅ ready'}
@@ -465,35 +472,38 @@ function ByItem({ orders, range, onChanged }) {
         item_name: g.name, quantity: g.total, unit: g.unit || null,
         target_location_id: null, created_by: uid, note: 'from weekly production aggregate'
       })
-      await supabase.from('order_items').update({ dispatch_status: 'procuring', status: 'done' }).in('id', g.itemIds)
+      // a product name can span rows in different states across stores (one
+      // store's line already dispatched, another's still pending) — only the
+      // still-pending ones are legal to send to the buyer
+      const pending = g.locItems.filter(li => isItemPending(li.status)).map(li => ({ id: li.id, dispatch_status: li.status }))
+      await transitionItemsBulk(pending, 'procuring')
     }))
     onChanged()
   }
 
   // mark every store's line for this product as fully ready
   async function markGroupReady(g) {
-    await supabase.from('order_items').update({ dispatch_status: 'ready', status: 'done' }).in('id', g.itemIds)
+    const movable = g.locItems.filter(li => canTransitionItem(li.status, 'ready'))
+    await transitionItemsBulk(movable.map(li => ({ id: li.id, dispatch_status: li.status })), 'ready')
     // ready means fulfilled = ordered qty; set per row to be exact. Values
     // differ per row so this can't be one bulk .update(), but a single
     // upsert still does it in one round trip instead of N sequential ones.
-    if (g.locItems.length) {
-      await supabase.from('order_items').upsert(g.locItems.map(li => ({ id: li.id, fulfilled_qty: li.qty })))
+    if (movable.length) {
+      await supabase.from('order_items').upsert(movable.map(li => ({ id: li.id, fulfilled_qty: li.qty })))
     }
     onChanged()
   }
   // apply per-store actual quantities: full -> ready, less -> short
   async function applyPartial(g, made) {   // made: { itemId: qty }
-    const readyRows = [], shortRows = []
+    const rows = []
     for (const li of g.locItems) {
       const got = Number(made[li.id])
       if (isNaN(got)) continue
-      if (got >= li.qty) readyRows.push({ id: li.id, dispatch_status: 'ready', status: 'done', fulfilled_qty: li.qty })
-      else shortRows.push({ id: li.id, dispatch_status: 'short', status: 'done', fulfilled_qty: got })
+      const toDispatchStatus = got >= li.qty ? 'ready' : 'short'
+      if (!canTransitionItem(li.status, toDispatchStatus)) continue
+      rows.push({ id: li.id, fromDispatchStatus: li.status, toDispatchStatus, fields: { fulfilled_qty: got } })
     }
-    await Promise.all([
-      readyRows.length ? supabase.from('order_items').upsert(readyRows) : null,
-      shortRows.length ? supabase.from('order_items').upsert(shortRows) : null
-    ].filter(Boolean))
+    await transitionItemsUpsert(rows)
     onChanged()
   }
 

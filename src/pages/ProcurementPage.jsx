@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchList, patchRow, insertRow } from '../lib/db'
+import { fetchList, insertRow } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
+import { transitionProcurementTask, transitionItem } from '../lib/orderLifecycle'
 
 const SELECT = `id,item_name,quantity,unit,status,note,unavail_reason,
   target_location_id,target:locations(name_en),catalog_item_id,source_order_item_id,created_at,bought_at`
@@ -47,23 +48,26 @@ export default function ProcurementPage() {
   function patch(id, fields) { setTasks(ts => ts.map(t => t.id === id ? { ...t, ...fields } : t)) }
 
   async function markBought(t) {
-    const { error } = await patchRow('procurement_tasks', t.id, { status: 'bought', bought_by: user.id })
+    const { error } = await transitionProcurementTask(t, 'bought', { bought_by: user.id })
     if (error) { alert(error.message); return }
-    // if this task came from an order line, send that line back to the dispatch desk as "ready"
+    // if this task came from an order line, send that line back to the dispatch desk as "ready".
+    // The order_item itself isn't loaded here — every task with a
+    // source_order_item_id was put there by sendToProcurement/sendAllToBuyer,
+    // which only ever move an item to 'procuring', so that's the assumed from-state.
     if (t.source_order_item_id) {
-      await patchRow('order_items', t.source_order_item_id, { dispatch_status: 'ready', status: 'done', fulfilled_qty: t.quantity, handled_by: user.id })
+      await transitionItem({ id: t.source_order_item_id, dispatch_status: 'procuring' }, 'ready', { fulfilled_qty: t.quantity, handled_by: user.id })
     }
     setTasks(ts => ts.filter(x => x.id !== t.id))
     if (showDone) loadDone()
   }
   async function markUnavailable(t, reason) {
-    const { error } = await patchRow('procurement_tasks', t.id, { status: 'unavailable', unavail_reason: reason, bought_by: user.id })
+    const { error } = await transitionProcurementTask(t, 'unavailable', { unavail_reason: reason, bought_by: user.id })
     if (error) { alert(error.message); return }
     setTasks(ts => ts.filter(x => x.id !== t.id)); setEditingNone(null)
     if (showDone) loadDone()
   }
   async function reopen(t) {
-    const { error } = await patchRow('procurement_tasks', t.id, { status: 'pending', unavail_reason: null })
+    const { error } = await transitionProcurementTask(t, 'pending', { unavail_reason: null })
     if (error) { alert(error.message); return }
     setDone(ds => ds.filter(x => x.id !== t.id))
     load()

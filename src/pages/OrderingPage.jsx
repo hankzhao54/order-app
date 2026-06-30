@@ -6,6 +6,7 @@ import {
   loadTemplates, saveTemplate, loadHistory
 } from '../lib/orderData'
 import { loadCutoff, productionWeek, cutoffLabel } from '../lib/cutoff'
+import { canAmendOrder } from '../lib/orderLifecycle'
 import { SkeletonRows } from '../components/Skeleton'
 
 export default function OrderingPage() {
@@ -302,7 +303,7 @@ function HistoryView({ history, onAmend }) {
             <span className={`tag st-${o.status}`}>{o.status}</span>
             {o.parent_order_id && <span className="tag amend">top-up</span>}
             <span className="muted small">{o.items.length} items</span>
-            {onAmend && ['in_progress', 'submitted'].includes(o.status) &&
+            {onAmend && canAmendOrder(o.status) &&
               <button className="mini amend-btn" onClick={() => onAmend(o)}>➕ Add to this</button>}
           </div>
           <div className="hitems">

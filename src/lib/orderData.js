@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { INITIAL_ORDER_STATUS, ORDER_STATUSES_EXCLUDED_FROM_MERGE, isItemPending } from './orderLifecycle'
 
 // Catalog + categories + this location's favorites, in one place.
 export async function loadCatalog(locationId) {
@@ -36,10 +37,10 @@ async function findMergeTarget(locationId, productionWeek) {
   const { data: candidates } = await supabase.from('orders')
     .select('id, status, items:order_items(id, catalog_item_id, quantity, dispatch_status)')
     .eq('location_id', locationId).eq('order_type', 'weekly').eq('production_week', productionWeek)
-    .not('status', 'in', '(completed,cancelled)')
+    .not('status', 'in', `(${ORDER_STATUSES_EXCLUDED_FROM_MERGE.join(',')})`)
     .order('created_at', { ascending: true })
   for (const o of candidates || []) {
-    if (o.items.length > 0 && o.items.every(i => i.dispatch_status === 'pending')) return o
+    if (o.items.length > 0 && o.items.every(i => isItemPending(i.dispatch_status))) return o
   }
   return null
 }
@@ -75,7 +76,7 @@ export async function submitOrder({ locationId, orderType, lines, adhoc, parentO
     .insert({
       location_id: locationId,
       order_type: finalType,
-      status: 'submitted',
+      status: INITIAL_ORDER_STATUS,
       submitted_at: new Date().toISOString(),
       parent_order_id: parentOrderId || null,
       production_week: finalType === 'weekly' ? (productionWeek || null) : null,

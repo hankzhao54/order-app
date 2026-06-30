@@ -1,6 +1,7 @@
 // Pure helpers for the Kitchen page: production-bucket sorting/grouping and
 // the by-item aggregation. Kept free of React/Supabase so they're testable
 // and so the page can wrap them in useMemo.
+import { isOrderCompleted } from './orderLifecycle'
 
 export function startOfWeek(d) {
   const x = new Date(d)
@@ -34,7 +35,7 @@ export function groupKey(o, thisMonday) {
 // Sort orders into production buckets/store-groups and compute the
 // per-group summary (order count + item tallies) used for the collapsed view.
 export function buildOrderGroups(orders, thisMonday, showCompleted) {
-  const list = orders.filter(o => showCompleted ? o.status === 'completed' : o.status !== 'completed')
+  const list = orders.filter(o => showCompleted ? isOrderCompleted(o.status) : !isOrderCompleted(o.status))
     .slice().sort((a, b) =>
       bucketOf(a, thisMonday) - bucketOf(b, thisMonday) ||
       (a.location?.name_en || '').localeCompare(b.location?.name_en || '') ||

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { fetchList } from '../../lib/db'
 import { useRealtimeReload } from '../../lib/useRealtimeReload'
+import { isItemReadyToDispatch, isItemHandled } from '../../lib/orderLifecycle'
 
 function startOfWeek(d){const x=new Date(d);const day=(x.getDay()+6)%7;x.setHours(0,0,0,0);x.setDate(x.getDate()-day);return x}
 
@@ -39,7 +40,7 @@ export default function Dashboard() {
 
   const allItems = orders.flatMap(o => o.items)
   const pending = allItems.filter(i => i.dispatch_status === 'pending' || i.dispatch_status === 'procuring').length
-  const readyToDispatch = allItems.filter(i => ['ready', 'short'].includes(i.dispatch_status)).length
+  const readyToDispatch = allItems.filter(i => isItemReadyToDispatch(i.dispatch_status)).length
   const shortItems = allItems.filter(i => i.dispatch_status === 'unavailable')
   const toBuy = tasks.filter(t => t.status === 'pending').length
 
@@ -75,7 +76,7 @@ export default function Dashboard() {
   const perStore = locs.filter(l => !l.is_central).map(l => {
     const os = orders.filter(o => o.location_id === l.id)
     const items = os.flatMap(o => o.items)
-    const done = items.filter(i => ['dispatched', 'unavailable', 'ready', 'short', 'procuring'].includes(i.dispatch_status)).length
+    const done = items.filter(i => isItemHandled(i.dispatch_status)).length
     return { name: l.name_en, orders: os.length, total: items.length, done }
   })
 
