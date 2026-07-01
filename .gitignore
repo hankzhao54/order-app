@@ -3,6 +3,7 @@ dist
 .env
 .env.local
 .DS_Store
+.claude
 
 # Supabase CLI local cache
 supabase/.temp

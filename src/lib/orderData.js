@@ -54,21 +54,34 @@ export async function submitOrder({ locationId, orderType, lines, adhoc, parentO
     if (target) {
       const existing = {}
       for (const it of target.items) if (it.catalog_item_id) existing[it.catalog_item_id] = it
-      let added = 0
+
+      // Split lines into quantity bumps (catalog item already on the order) and
+      // brand-new rows. New rows — including ad-hoc lines — all go in one insert
+      // instead of a round-trip per line; the bumps run concurrently. This keeps
+      // a large merged order to 2-3 network round-trips instead of N+1.
+      const bumps = []
+      const insertRows = []
       for (const l of lines) {
         if (existing[l.id]) {
-          await supabase.from('order_items').update({ quantity: Number(existing[l.id].quantity) + Number(l.qty) }).eq('id', existing[l.id].id)
+          bumps.push({ id: existing[l.id].id, quantity: Number(existing[l.id].quantity) + Number(l.qty) })
         } else {
-          await supabase.from('order_items').insert({ order_id: target.id, catalog_item_id: l.id, item_name_snapshot: l.name_en, unit_snapshot: l.order_unit, quantity: l.qty })
+          insertRows.push({ order_id: target.id, catalog_item_id: l.id, item_name_snapshot: l.name_en, unit_snapshot: l.order_unit, quantity: l.qty })
         }
-        added++
       }
       for (const a of adhoc) if (a.name) {
-        await supabase.from('order_items').insert({ order_id: target.id, catalog_item_id: null, item_name_snapshot: a.name, unit_snapshot: a.unit || null, quantity: Number(a.qty) || 1 })
-        added++
+        insertRows.push({ order_id: target.id, catalog_item_id: null, item_name_snapshot: a.name, unit_snapshot: a.unit || null, quantity: Number(a.qty) || 1 })
       }
-      await supabase.from('orders').update({ submitted_at: new Date().toISOString() }).eq('id', target.id)
-      return { count: added, orderId: target.id, merged: true }
+
+      const writes = bumps.map(b =>
+        supabase.from('order_items').update({ quantity: b.quantity }).eq('id', b.id))
+      if (insertRows.length) writes.push(supabase.from('order_items').insert(insertRows))
+      writes.push(supabase.from('orders').update({ submitted_at: new Date().toISOString() }).eq('id', target.id))
+
+      const results = await Promise.all(writes)
+      const failed = results.find(r => r.error)
+      if (failed) throw failed.error
+
+      return { count: bumps.length + insertRows.length, orderId: target.id, merged: true }
     }
   }
 
