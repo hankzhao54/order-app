@@ -167,7 +167,9 @@ export default function DispatchPage() {
                 <span className="cnt sent">📦 {loc.items.filter(i => i.dispatch_status === 'dispatched').length}</span>
               </div>
               <button className="ghost" onClick={() => printSlip(loc.name, loc.items)}>🖨 Slip</button>
-              {!isDriver && <button className="primary" disabled={!readyN} onClick={() => dispatchAllReady(loc.items)}>Dispatch {loc.name} ({readyN})</button>}
+              <button className="primary" disabled={!readyN} onClick={() => dispatchAllReady(loc.items)}>
+                {isDriver ? `✅ Confirm delivered — ${loc.name} (${readyN})` : `📦 Dispatch ${loc.name} (${readyN})`}
+              </button>
             </div>
             <div className="dcols">
               <Column title="🍳 Make" items={make} {...shared} />
@@ -203,25 +205,31 @@ function Column({ title, items, showDispatched, isDriver, isStaff, reasonFor, se
               {i.dispatch_status === 'procuring' && (
                 <>
                   <span className="statuschip buy2">🛒 with buyer</span>
-                  <button className="mini ok" onClick={() => markReady(i)}>✓ Received</button>
+                  {isStaff && <button className="mini ok" onClick={() => markReady(i)}>✓ Received</button>}
                 </>
               )}
 
-              {isItemPending(i.dispatch_status) && reasonFor !== i.id && (
+              {/* Item-level checks (ready/short/unavailable) are the kitchen's
+                  job, done on the Kitchen page — the driver only hands off the
+                  whole shipment (see the per-location "Confirm delivered"
+                  button above), so these stay staff-only here. */}
+              {isStaff && isItemPending(i.dispatch_status) && reasonFor !== i.id && (
                 <>
                   <button className="mini ok" onClick={() => markReady(i)}>{isBuy ? '✓ Bought' : '✓ Ready'}</button>
                   <button className="mini bad" onClick={() => setReasonFor(i.id)}>✕ None</button>
                 </>
               )}
-              {reasonFor === i.id && (
+              {isStaff && reasonFor === i.id && (
                 <div className="inline-edit wrap">
                   {REASONS.map(r => <button key={r} className="mini bad" onClick={() => markUnavailable(i, r)}>{r}</button>)}
                   <button className="mini" onClick={() => setReasonFor(null)}>Cancel</button>
                 </div>
               )}
+              {!isStaff && isItemPending(i.dispatch_status) && <span className="statuschip wait">⏳ not ready</span>}
 
-              {isItemReadyToDispatch(i.dispatch_status) &&
+              {isStaff && isItemReadyToDispatch(i.dispatch_status) &&
                 <button className="mini send" onClick={() => dispatchItem(i)}>📦 Delivered</button>}
+              {!isStaff && isItemReadyToDispatch(i.dispatch_status) && <span className="statuschip ready">✅ ready</span>}
               {i.dispatch_status === 'unavailable' && <span className="statuschip bad">needs arranging</span>}
             </div>
           </div>
