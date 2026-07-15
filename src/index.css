@@ -108,6 +108,9 @@ button:hover{border-color:#cbc6b8} button:disabled{opacity:.45;cursor:default}
 .tag.urgent{background:var(--buy-bg);color:var(--buy)} .tag.weekly{background:var(--make-bg);color:var(--make)}
 .tag.procurement{background:var(--buy2-bg);color:var(--buy2-ink)} .tag.buy{background:var(--buy-bg);color:var(--buy)}
 .cutoff-banner.buy{background:var(--buy2-bg);color:var(--buy2-ink)}
+.buyhead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.addtask .addtask-row+.addtask-row{margin-top:8px}
+.addtask-row input[placeholder^="Note"]{flex:1;min-width:200px}
 .ticketitems{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
 .tline{border:1px solid var(--line);border-radius:10px;padding:8px 10px}
 .tline.done{opacity:.55;background:var(--make-bg)}

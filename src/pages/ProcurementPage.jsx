@@ -5,6 +5,9 @@ import { useAuth } from '../lib/AuthProvider'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
 import { transitionProcurementTask, transitionItem, transitionOrder, LifecycleError } from '../lib/orderLifecycle'
 
+const SELECT = `id,item_name,quantity,unit,status,note,unavail_reason,
+  target_location_id,target:locations(name_en),catalog_item_id,source_order_item_id,created_by,created_at,bought_at`
+
 // Procurement orders (order_type 'procurement') never pass through the
 // kitchen, so nobody would ever mark them complete. Keep the parent order's
 // status in sync with its buy-list tasks: complete it when every line is
@@ -33,13 +36,22 @@ async function syncProcurementOrder(orderItemId) {
   }
 }
 
-const SELECT = `id,item_name,quantity,unit,status,note,unavail_reason,
-  target_location_id,target:locations(name_en),catalog_item_id,source_order_item_id,created_at,bought_at`
+// when a bought task cascades its order line to 'ready'
+async function cascadeBought(t, userId) {
+  if (!t.source_order_item_id) return
+  // every task with a source_order_item_id was created with the line in
+  // 'procuring' — that's the assumed from-state (same as before).
+  await transitionItem({ id: t.source_order_item_id, dispatch_status: 'procuring' }, 'ready', { fulfilled_qty: t.quantity, handled_by: userId })
+  await syncProcurementOrder(t.source_order_item_id)
+}
+
+const CANT_REASONS = ['Out of stock', 'Too expensive', 'Not found']
 
 export default function ProcurementPage() {
-  const { user, role } = useAuth()
-  const isDriver = role === 'driver'
-  const canAdd = ['restaurant_orderer', 'kitchen_manager', 'admin'].includes(role)
+  const { user, role, locationId } = useAuth()
+  const isBuyer = ['driver', 'kitchen_manager', 'admin'].includes(role)   // can mark bought
+  const isStore = ['restaurant_orderer', 'store_manager'].includes(role)  // requests for own store
+  const canAdd = isStore || ['kitchen_manager', 'admin'].includes(role)
 
   const [tasks, setTasks] = useState([])     // pending tasks only
   const [done, setDone] = useState([])       // bought/unavailable, lazy-loaded
@@ -48,15 +60,20 @@ export default function ProcurementPage() {
   const [loading, setLoading] = useState(true)
   const [showDone, setShowDone] = useState(false)
   const [editingNone, setEditingNone] = useState(null)  // task id awaiting reason
+  const [busy, setBusy] = useState(false)
 
-  // add form
-  const [form, setForm] = useState({ item_name: '', catalog_item_id: '', quantity: 1, unit: '', target_location_id: '' })
+  // add form — stores always request for their own store
+  const emptyForm = { item_name: '', catalog_item_id: '', quantity: 1, unit: '', note: '', target_location_id: isStore ? (locationId || '') : '' }
+  const [form, setForm] = useState(emptyForm)
   const [pick, setPick] = useState('')
+
+  // stores only see their own store's list; buyers see everything
+  const scoped = q => (isStore && locationId) ? q.eq('target_location_id', locationId) : q
 
   async function load() {
     setLoading(true)
     const [t, l, c] = await Promise.all([
-      fetchList('procurement_tasks', { select: SELECT, build: q => q.eq('status', 'pending').order('created_at', { ascending: false }) }),
+      fetchList('procurement_tasks', { select: SELECT, build: q => scoped(q.eq('status', 'pending')).order('created_at', { ascending: false }) }),
       fetchList('locations', { select: 'id,name_en,is_central', build: q => q.eq('is_active', true).order('name_en') }),
       fetchList('catalog_items', { select: 'id,name_en,name_hu,order_unit', build: q => q.eq('is_active', true).order('name_en') })
     ])
@@ -66,34 +83,39 @@ export default function ProcurementPage() {
   async function loadDone() {
     const d = await fetchList('procurement_tasks', {
       select: SELECT,
-      build: q => q.neq('status', 'pending').order('created_at', { ascending: false }).limit(50)
+      build: q => scoped(q.neq('status', 'pending')).order('created_at', { ascending: false }).limit(50)
     })
     setDone(d)
   }
-  useEffect(() => { load() }, [])
-  useRealtimeReload(['procurement_tasks'], () => { load(); if (showDone) loadDone() }, editingNone !== null)
-
-  function patch(id, fields) { setTasks(ts => ts.map(t => t.id === id ? { ...t, ...fields } : t)) }
+  useEffect(() => { load(); loadDone() }, [])
+  useRealtimeReload(['procurement_tasks'], () => { load(); loadDone() }, editingNone !== null)
 
   async function markBought(t) {
     const { error } = await transitionProcurementTask(t, 'bought', { bought_by: user.id })
     if (error) { alert(error.message); return }
-    // if this task came from an order line, send that line back to the dispatch desk as "ready".
-    // The order_item itself isn't loaded here — every task with a
-    // source_order_item_id was put there by sendToProcurement/sendAllToBuyer,
-    // which only ever move an item to 'procuring', so that's the assumed from-state.
-    if (t.source_order_item_id) {
-      await transitionItem({ id: t.source_order_item_id, dispatch_status: 'procuring' }, 'ready', { fulfilled_qty: t.quantity, handled_by: user.id })
-      await syncProcurementOrder(t.source_order_item_id)
-    }
+    await cascadeBought(t, user.id)
     setTasks(ts => ts.filter(x => x.id !== t.id))
-    if (showDone) loadDone()
+    loadDone()
+  }
+  async function markAllBought(list) {
+    if (!confirm(`Mark all ${list.length} item(s) as bought?`)) return
+    setBusy(true)
+    try {
+      for (const t of list) {
+        const { error } = await transitionProcurementTask(t, 'bought', { bought_by: user.id })
+        if (error) { alert(error.message); break }
+        await cascadeBought(t, user.id)
+      }
+    } finally {
+      setBusy(false)
+      load(); loadDone()
+    }
   }
   async function markUnavailable(t, reason) {
     const { error } = await transitionProcurementTask(t, 'unavailable', { unavail_reason: reason, bought_by: user.id })
     if (error) { alert(error.message); return }
     setTasks(ts => ts.filter(x => x.id !== t.id)); setEditingNone(null)
-    if (showDone) loadDone()
+    loadDone()
   }
   async function reopen(t) {
     const { error } = await transitionProcurementTask(t, 'pending', { unavail_reason: null })
@@ -127,32 +149,42 @@ export default function ProcurementPage() {
   }
   async function addTask() {
     if (!form.item_name.trim()) return
+    const target = isStore ? (locationId || null) : (form.target_location_id || null)
     const row = {
       item_name: form.item_name.trim(),
       catalog_item_id: form.catalog_item_id || null,
       quantity: Number(form.quantity) || 1,
       unit: form.unit || null,
-      target_location_id: form.target_location_id || null,
+      note: form.note.trim() || null,
+      target_location_id: target,
       created_by: user.id
     }
     const { data, error } = await insertRow('procurement_tasks', row, { select: SELECT })
     if (error) { alert(error.message); return }
     setTasks(ts => [data, ...ts])
-    setForm({ item_name: '', catalog_item_id: '', quantity: 1, unit: '', target_location_id: '' }); setPick('')
+    setForm(emptyForm); setPick('')
   }
-
-  const pending = tasks
 
   // group pending by target location
   const grouped = useMemo(() => {
     const m = new Map()
-    for (const t of pending) {
+    for (const t of tasks) {
       const k = t.target?.name_en || 'Unassigned'
       if (!m.has(k)) m.set(k, [])
       m.get(k).push(t)
     }
     return m
-  }, [pending])
+  }, [tasks])
+
+  // done/unavailable counts per store, so the driver sees progress ("3 of 7")
+  const doneByLoc = useMemo(() => {
+    const m = new Map()
+    for (const t of done) {
+      const k = t.target?.name_en || 'Unassigned'
+      m.set(k, (m.get(k) || 0) + 1)
+    }
+    return m
+  }, [done])
 
   if (loading) return <div className="center muted">Loading…</div>
 
@@ -160,59 +192,77 @@ export default function ProcurementPage() {
     <div className="procurement">
       {canAdd && (
         <div className="addtask">
-          <h3>Add to buy list</h3>
+          <h3>Add to buy list {isStore && <span className="muted small">— delivered to your store</span>}</h3>
           <div className="addtask-row">
             <select value={pick} onChange={e => onPickCatalog(e.target.value)}>
               <option value="">— pick from catalog —</option>
               {catalog.map(c => <option key={c.id} value={c.id}>{c.name_en}</option>)}
             </select>
-            <span className="muted small">or type:</span>
-            <input placeholder="Item name" value={form.item_name}
+            <span className="muted small">or anything else:</span>
+            <input placeholder="Type any item (doesn't have to be in the catalog)" value={form.item_name}
               onChange={e => setForm(f => ({ ...f, item_name: e.target.value, catalog_item_id: '' }))} />
             <input className="qty" placeholder="qty" value={form.quantity}
               onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
             <input className="unit" placeholder="unit" value={form.unit}
               onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} />
-            <select value={form.target_location_id} onChange={e => setForm(f => ({ ...f, target_location_id: e.target.value }))}>
-              <option value="">Deliver to…</option>
-              {locations.map(l => <option key={l.id} value={l.id}>{l.name_en}{l.is_central ? ' (kitchen)' : ''}</option>)}
-            </select>
-            <button className="primary" onClick={addTask}>Add</button>
+          </div>
+          <div className="addtask-row">
+            <input placeholder="Note for the driver — brand, size, where to find it… (optional)" value={form.note}
+              onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
+            {!isStore && (
+              <select value={form.target_location_id} onChange={e => setForm(f => ({ ...f, target_location_id: e.target.value }))}>
+                <option value="">Deliver to…</option>
+                {locations.map(l => <option key={l.id} value={l.id}>{l.name_en}{l.is_central ? ' (kitchen)' : ''}</option>)}
+              </select>
+            )}
+            <button className="primary" onClick={addTask} disabled={!form.item_name.trim()}>Add</button>
           </div>
         </div>
       )}
 
       <div className="toolbar">
-        <span className="muted">{pending.length} to buy</span>
-        <label className="inline"><input type="checkbox" checked={showDone} onChange={e => { const v = e.target.checked; setShowDone(v); if (v) loadDone() }} /> show done</label>
+        <span className="muted">{tasks.length} to buy{isStore ? ' for your store' : ''}</span>
+        <label className="inline"><input type="checkbox" checked={showDone} onChange={e => setShowDone(e.target.checked)} /> show done</label>
       </div>
 
-      {grouped.size === 0 && <div className="center muted">Nothing to buy right now.</div>}
+      {grouped.size === 0 && (
+        <div className="center muted">
+          {isStore ? 'Nothing pending for your store. Add anything you need above — the driver will buy and deliver it.' : 'Nothing to buy right now. 🎉'}
+        </div>
+      )}
       {[...grouped.entries()].map(([loc, list]) => (
         <div className="buycard" key={loc}>
-          <div className="dcoltitle">📍 {loc} <span className="muted">({list.length})</span></div>
+          <div className="dcoltitle buyhead">
+            <span>📍 {loc} <span className="tag st-in_progress">{list.length} left</span>
+              {doneByLoc.get(loc) > 0 && <span className="muted small"> · {doneByLoc.get(loc)} done</span>}</span>
+            {isBuyer && list.length > 1 &&
+              <button className="mini ok" disabled={busy} onClick={() => markAllBought(list)}>✓ All bought ({list.length})</button>}
+          </div>
           {list.map(t => (
             <div key={t.id} className="buyrow">
               <div className="dinfo">
                 <span className="dname">{t.item_name}</span>
-                <span className="dqty muted">{t.quantity}{t.unit ? ` ${t.unit}` : ''}{t.note ? ` · ${t.note}` : ''}</span>
+                <span className="dqty muted">
+                  {t.quantity}{t.unit ? ` ${t.unit}` : ''}
+                  {t.note ? ` · 📝 ${t.note}` : ''}
+                </span>
               </div>
               <div className="dactions">
-                {isDriver || ['kitchen_manager', 'admin'].includes(role) ? (
+                {isBuyer ? (
                   editingNone === t.id ? (
                     <div className="inline-edit wrap">
-                      {['Out of stock', 'Too expensive', 'Not found'].map(r =>
+                      {CANT_REASONS.map(r =>
                         <button key={r} className="mini bad" onClick={() => markUnavailable(t, r)}>{r}</button>)}
                       <button className="mini" onClick={() => setEditingNone(null)}>Cancel</button>
                     </div>
                   ) : (
                     <>
-                      <button className="mini ok" onClick={() => markBought(t)}>✓ Bought</button>
-                      <button className="mini bad" onClick={() => setEditingNone(t.id)}>✕ Can't</button>
+                      <button className="mini ok" disabled={busy} onClick={() => markBought(t)}>✓ Bought</button>
+                      <button className="mini bad" disabled={busy} onClick={() => setEditingNone(t.id)}>✕ Can't</button>
                     </>
                   )
-                ) : <span className="statuschip wait">⏳ waiting</span>}
-                {(role === 'admin' || canAdd) &&
+                ) : <span className="statuschip wait">⏳ waiting for driver</span>}
+                {(role === 'admin' || t.created_by === user.id) &&
                   <button className="iconbtn" title="Remove" onClick={() => removeTask(t)}>🗑</button>}
               </div>
             </div>
@@ -237,7 +287,8 @@ export default function ProcurementPage() {
                 <span className={`statuschip ${t.status === 'unavailable' ? 'bad' : ''}`}>
                   {t.status === 'bought' ? '✓ bought' : 'needs arranging'}
                 </span>
-                <button className="iconbtn" title="Reopen" onClick={() => reopen(t)}>↩</button>
+                {(isBuyer || t.created_by === user.id) &&
+                  <button className="iconbtn" title="Reopen" onClick={() => reopen(t)}>↩</button>}
               </div>
             </div>
           ))}
