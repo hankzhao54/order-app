@@ -58,7 +58,7 @@ export default function App() {
       <Route path="/kitchen" element={<RequireAuth allow={staff}><Layout><KitchenPage /></Layout></RequireAuth>} />
       <Route path="/reports" element={<RequireAuth allow={['kitchen_manager','admin']}><Layout><ReportsPage /></Layout></RequireAuth>} />
       <Route path="/admin/dashboard" element={<RequireAuth allow={['admin']}><Layout><Dashboard /></Layout></RequireAuth>} />
-      <Route path="/admin/catalog" element={<RequireAuth allow={['admin']}><Layout><CatalogAdmin /></Layout></RequireAuth>} />
+      <Route path="/admin/catalog" element={<RequireAuth allow={['admin', 'store_manager']}><Layout><CatalogAdmin /></Layout></RequireAuth>} />
       <Route path="/admin/locations" element={<RequireAuth allow={['admin']}><Layout><LocationsAdmin /></Layout></RequireAuth>} />
       <Route path="/admin/suppliers" element={<RequireAuth allow={['admin']}><Layout><SuppliersAdmin /></Layout></RequireAuth>} />
       <Route path="/admin/users" element={<RequireAuth allow={['admin']}><Layout><UsersAdmin /></Layout></RequireAuth>} />

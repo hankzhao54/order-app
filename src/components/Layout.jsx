@@ -40,8 +40,8 @@ export default function Layout({ children }) {
           {(isStaff || driver) && <NavLink to="/dispatch" className="navlink">Dispatch</NavLink>}
           {(orderer || storeMgr || isStaff || driver) && <NavLink to="/procurement" className="navlink">Procurement</NavLink>}
           <NavLink to="/history" className="navlink">History</NavLink>
+          {(role === 'admin' || storeMgr) && <NavLink to="/admin/catalog" className="navlink">Catalog</NavLink>}
           {role === 'admin' && <>
-            <NavLink to="/admin/catalog" className="navlink">Catalog</NavLink>
             <NavLink to="/admin/suppliers" className="navlink">Suppliers</NavLink>
             <NavLink to="/admin/locations" className="navlink">Locations</NavLink>
             <NavLink to="/admin/users" className="navlink">Users</NavLink>

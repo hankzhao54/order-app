@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, Fragment } from 'react'
 import { supabase } from '../../lib/supabase'
 import { fetchList, patchRow, insertRow } from '../../lib/db'
+import { useAuth } from '../../lib/AuthProvider'
 
 export default function CatalogAdmin() {
   const [tab, setTab] = useState('items')   // items | categories
@@ -33,6 +34,10 @@ export default function CatalogAdmin() {
 }
 
 function Items({ items, cats, reload }) {
+  // supplier prices are admin-only; store managers manage items but not costs
+  const { role } = useAuth()
+  const canPrices = role === 'admin'
+  const nCols = canPrices ? 8 : 7
   const [q, setQ] = useState('')
   const [fCat, setFCat] = useState('')
   const [fActive, setFActive] = useState('active')   // active | inactive | all
@@ -118,7 +123,7 @@ function Items({ items, cats, reload }) {
           <Th label="Default" hint="Make = produced by Central Kitchen; Buy = purchased from a supplier." />
           <Th label="Unit" hint="Order unit — what stores order in (e.g. kg, bag, box)." />
           <Th label="Specs" hint="Stock unit, per-unit content, shelf life, storage, low-stock threshold. Click ⚙ to expand." />
-          <Th label="Price" hint="Supplier price history (used for spend reports)." />
+          {canPrices && <Th label="Price" hint="Supplier price history (used for spend reports)." />}
           <Th label="Active" hint="Uncheck to hide from ordering & inventory without deleting." />
         </tr></thead>
         <tbody>
@@ -142,11 +147,11 @@ function Items({ items, cats, reload }) {
               </td>
               <td><input className="cell" value={i.order_unit || ''} onChange={e => set(i.id, { order_unit: e.target.value })} onBlur={e => patch(i.id, { order_unit: e.target.value || null })} /></td>
               <td><button className={`mini ${specSet(i) ? 'on' : ''}`} onClick={() => setSpecFor(specFor === i.id ? null : i.id)}>⚙ {specFor === i.id ? '▾' : (specSet(i) ? 'set' : 'specs')}</button></td>
-              <td><button className="mini" onClick={() => setPriceFor(priceFor === i.id ? null : i.id)}>💰 {priceFor === i.id ? '▾' : 'prices'}</button></td>
+              {canPrices && <td><button className="mini" onClick={() => setPriceFor(priceFor === i.id ? null : i.id)}>💰 {priceFor === i.id ? '▾' : 'prices'}</button></td>}
               <td><input type="checkbox" checked={i.is_active} onChange={e => patch(i.id, { is_active: e.target.checked })} /></td>
             </tr>
             {specFor === i.id && (
-              <tr className="specrow"><td colSpan={8}>
+              <tr className="specrow"><td colSpan={nCols}>
                 <div className="specgrid">
                   <label>Stock unit<input className="cell" placeholder="bag…" value={i.stock_unit || ''} onChange={e => set(i.id, { stock_unit: e.target.value })} onBlur={e => patch(i.id, { stock_unit: e.target.value || null })} /></label>
                   <label>Per unit
@@ -168,8 +173,8 @@ function Items({ items, cats, reload }) {
                 </div>
               </td></tr>
             )}
-            {priceFor === i.id && (
-              <tr className="pricerow"><td colSpan={8}><PricePanel item={i} /></td></tr>
+            {canPrices && priceFor === i.id && (
+              <tr className="pricerow"><td colSpan={nCols}><PricePanel item={i} /></td></tr>
             )}
             </Fragment>
           ))}
