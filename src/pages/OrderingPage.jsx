@@ -251,9 +251,12 @@ export default function OrderingPage() {
             {orderType === 'event' && (
               <div className="cutoff-banner event">🎉 Event order — handled separately from weekly production.</div>
             )}
+            {orderType === 'procurement' && (
+              <div className="cutoff-banner buy">🛒 Procurement order — goes straight to the driver's buy list. The kitchen is not involved; the driver buys and delivers to your store.</div>
+            )}
             <div className="seg">
-              {['weekly', 'urgent', 'event'].map(t =>
-                <button key={t} className={orderType === t ? 'on' : ''} onClick={() => setOrderType(t)}>{t}</button>)}
+              {['weekly', 'urgent', 'event', 'procurement'].map(t =>
+                <button key={t} className={orderType === t ? 'on' : ''} onClick={() => setOrderType(t)}>{t === 'procurement' ? '🛒 buy' : t}</button>)}
             </div>
             {orderType === 'event' && (
               <div className="eventfields">
@@ -303,7 +306,7 @@ function HistoryView({ history, onAmend }) {
             <span className={`tag st-${o.status}`}>{o.status}</span>
             {o.parent_order_id && <span className="tag amend">top-up</span>}
             <span className="muted small">{o.items.length} items</span>
-            {onAmend && canAmendOrder(o.status) &&
+            {onAmend && o.order_type !== 'procurement' && canAmendOrder(o.status) &&
               <button className="mini amend-btn" onClick={() => onAmend(o)}>➕ Add to this</button>}
           </div>
           <div className="hitems">

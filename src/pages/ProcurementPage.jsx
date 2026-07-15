@@ -3,7 +3,35 @@ import { supabase } from '../lib/supabase'
 import { fetchList, insertRow } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
-import { transitionProcurementTask, transitionItem, LifecycleError } from '../lib/orderLifecycle'
+import { transitionProcurementTask, transitionItem, transitionOrder, LifecycleError } from '../lib/orderLifecycle'
+
+// Procurement orders (order_type 'procurement') never pass through the
+// kitchen, so nobody would ever mark them complete. Keep the parent order's
+// status in sync with its buy-list tasks: complete it when every line is
+// bought, reopen it if a bought line is reopened.
+async function syncProcurementOrder(orderItemId) {
+  const { data: it } = await supabase.from('order_items')
+    .select('order:orders(id, status, order_type, items:order_items(dispatch_status))')
+    .eq('id', orderItemId).maybeSingle()
+  const o = it?.order
+  if (!o || o.order_type !== 'procurement' || ['cancelled', 'archived'].includes(o.status)) return
+  const allDone = o.items.length > 0 && o.items.every(i => ['ready', 'dispatched', 'received'].includes(i.dispatch_status))
+  try {
+    if (allDone && o.status !== 'completed') {
+      let cur = o
+      if (cur.status === 'submitted') {
+        const { error } = await transitionOrder(cur, 'in_progress')
+        if (error) return
+        cur = { ...cur, status: 'in_progress' }
+      }
+      await transitionOrder(cur, 'completed', { completed_at: new Date().toISOString() })
+    } else if (!allDone && o.status === 'completed') {
+      await transitionOrder(o, 'in_progress', { completed_at: null })
+    }
+  } catch (e) {
+    if (!(e instanceof LifecycleError)) throw e
+  }
+}
 
 const SELECT = `id,item_name,quantity,unit,status,note,unavail_reason,
   target_location_id,target:locations(name_en),catalog_item_id,source_order_item_id,created_at,bought_at`
@@ -56,6 +84,7 @@ export default function ProcurementPage() {
     // which only ever move an item to 'procuring', so that's the assumed from-state.
     if (t.source_order_item_id) {
       await transitionItem({ id: t.source_order_item_id, dispatch_status: 'procuring' }, 'ready', { fulfilled_qty: t.quantity, handled_by: user.id })
+      await syncProcurementOrder(t.source_order_item_id)
     }
     setTasks(ts => ts.filter(x => x.id !== t.id))
     if (showDone) loadDone()
@@ -79,6 +108,7 @@ export default function ProcurementPage() {
       } catch (e) {
         if (!(e instanceof LifecycleError)) throw e
       }
+      await syncProcurementOrder(t.source_order_item_id)
     }
     setDone(ds => ds.filter(x => x.id !== t.id))
     load()

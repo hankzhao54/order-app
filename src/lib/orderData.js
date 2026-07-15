@@ -45,8 +45,52 @@ async function findMergeTarget(locationId, productionWeek) {
   return null
 }
 
+// A procurement order skips the kitchen entirely: the order + items are
+// recorded as usual (history/reports still work), but every line is
+// immediately pushed onto the driver's buy list (procurement_tasks) with the
+// ordering store as the delivery target, and the items start in 'procuring'.
+async function submitProcurementOrder({ locationId, lines, adhoc }) {
+  const uid = (await supabase.auth.getUser()).data.user?.id
+  const { data: order, error } = await supabase.from('orders')
+    .insert({
+      location_id: locationId,
+      order_type: 'procurement',
+      status: INITIAL_ORDER_STATUS,
+      submitted_at: new Date().toISOString(),
+    })
+    .select('id').single()
+  if (error) throw error
+
+  const rows = []
+  for (const l of lines)
+    rows.push({ order_id: order.id, catalog_item_id: l.id, item_name_snapshot: l.name_en, unit_snapshot: l.order_unit, quantity: l.qty, dispatch_status: 'procuring', status: 'done' })
+  for (const a of adhoc)
+    if (a.name) rows.push({ order_id: order.id, catalog_item_id: null, item_name_snapshot: a.name, unit_snapshot: a.unit || null, quantity: Number(a.qty) || 1, dispatch_status: 'procuring', status: 'done' })
+  const { data: items, error: e2 } = await supabase.from('order_items').insert(rows).select('id, catalog_item_id, item_name_snapshot, unit_snapshot, quantity')
+  if (e2) throw e2
+
+  const tasks = items.map(it => ({
+    item_name: it.item_name_snapshot,
+    catalog_item_id: it.catalog_item_id,
+    quantity: it.quantity,
+    unit: it.unit_snapshot || null,
+    target_location_id: locationId,
+    source_order_item_id: it.id,
+    note: 'store procurement order',
+    created_by: uid,
+  }))
+  const { error: e3 } = await supabase.from('procurement_tasks').insert(tasks)
+  if (e3) throw e3
+
+  return { count: rows.length, orderId: order.id, merged: false }
+}
+
 export async function submitOrder({ locationId, orderType, lines, adhoc, parentOrderId, productionWeek, eventName, eventDate }) {
   const finalType = parentOrderId ? 'urgent' : orderType
+
+  if (finalType === 'procurement') {
+    return submitProcurementOrder({ locationId, lines, adhoc })
+  }
 
   // weekly orders (not top-ups) merge into an existing untouched order for the same production week
   if (finalType === 'weekly' && productionWeek && !parentOrderId) {

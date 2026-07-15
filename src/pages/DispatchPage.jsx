@@ -29,7 +29,9 @@ export default function DispatchPage() {
     setLoading(true)
     const data = await fetchList('orders', {
       select: SELECT,
-      build: q => q.in('status', ['in_progress', 'completed']).order('created_at', { ascending: true }).limit(500)
+      // procurement orders are bought & delivered directly by the driver —
+      // they never pass through the dispatch desk
+      build: q => q.in('status', ['in_progress', 'completed']).neq('order_type', 'procurement').order('created_at', { ascending: true }).limit(500)
     })
     setOrders(data); setLoading(false)
   }

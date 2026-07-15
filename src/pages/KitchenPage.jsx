@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchList, patchRow, insertRow } from '../lib/db'
+import { fetchList, patchRow } from '../lib/db'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
 import { thisMonday } from '../lib/cutoff'
 import { BUCKET_LABELS, bucketOf, groupKey, buildOrderGroups, aggregateByItem, inThisWeek } from '../lib/kitchen'
@@ -27,8 +27,6 @@ export default function KitchenPage() {
   const [view, setView] = useState('orders')      // orders | items
   const [range, setRange] = useState('open')       // open | week
   const [showCompleted, setShowCompleted] = useState(false)
-  const [locations, setLocations] = useState([])
-  const [procureFor, setProcureFor] = useState(null)  // { item, order } awaiting target store
   const [stock, setStock] = useState({})              // catalog_item_id -> qty
   const [centralId, setCentralId] = useState(null)
   const [expanded, setExpanded] = useState({})   // groupKey -> bool (override default fold)
@@ -37,22 +35,19 @@ export default function KitchenPage() {
     setLoading(true)
     const data = await fetchList('orders', {
       select: SELECT,
-      build: q => q.in('status', ['submitted', 'in_progress']).order('created_at', { ascending: true })
+      // procurement orders go straight to the driver's buy list — never the kitchen
+      build: q => q.in('status', ['submitted', 'in_progress']).neq('order_type', 'procurement').order('created_at', { ascending: true })
     })
     setOrders(data); setLoading(false)
   }
   async function loadCompleted() {
     const data = await fetchList('orders', {
       select: SELECT,
-      build: q => q.eq('status', 'completed').order('completed_at', { ascending: false }).limit(50)
+      build: q => q.eq('status', 'completed').neq('order_type', 'procurement').order('completed_at', { ascending: false }).limit(50)
     })
     setCompleted(data)
   }
   useEffect(() => { load() }, [])
-  useEffect(() => {
-    fetchList('locations', { select: 'id,name_en,is_central', build: q => q.eq('is_active', true).order('name_en') })
-      .then(setLocations)
-  }, [])
   async function loadStock() {
     const { data: central } = await supabase.from('locations').select('id').eq('is_central', true).eq('is_active', true).limit(1).maybeSingle()
     if (!central) { setStock({}); return }
@@ -66,7 +61,7 @@ export default function KitchenPage() {
   }
   useEffect(() => { loadStock() }, [])
   // auto-refresh on changes; pause while an inline editor is open
-  useRealtimeReload(['orders', 'order_items'], () => { load(); if (showCompleted) loadCompleted() }, editing !== null || procureFor !== null)
+  useRealtimeReload(['orders', 'order_items'], () => { load(); if (showCompleted) loadCompleted() }, editing !== null)
 
   function patchItemLocal(itemId, fields) {
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => i.id === itemId ? { ...i, ...fields } : i) })))
@@ -77,10 +72,6 @@ export default function KitchenPage() {
       await transitionOrder(o, 'in_progress')
       setOrders(os => os.map(x => x.id === orderId ? { ...x, status: 'in_progress' } : x))
     }
-  }
-  async function setFulfillment(item, type) {
-    await patchRow('order_items', item.id, { fulfillment_type: type })
-    patchItemLocal(item.id, { fulfillment_type: type })
   }
   async function fulfillFromStock(item, orderId) {
     setEditing(null)
@@ -152,23 +143,6 @@ export default function KitchenPage() {
     if (showCompleted) loadCompleted()
   }
 
-  async function sendToProcurement(item, order, targetLocId) {
-    const { error } = await insertRow('procurement_tasks', {
-      item_name: item.item_name_snapshot,
-      catalog_item_id: item.catalog_item_id || null,
-      quantity: item.quantity,
-      unit: item.unit_snapshot || null,
-      target_location_id: targetLocId || null,
-      source_order_item_id: item.id,
-      note: `from ${order.location?.name_en || 'order'}`,
-      created_by: (await supabase.auth.getUser()).data.user?.id
-    })
-    if (error) { alert(error.message); return }
-    await transitionItem(item, 'procuring')
-    patchItemLocal(item.id, { dispatch_status: 'procuring' })
-    setProcureFor(null)
-  }
-
   async function saveQty(item, qty) {
     await patchRow('order_items', item.id, { quantity: qty })
     patchItemLocal(item.id, { quantity: qty })
@@ -188,7 +162,7 @@ export default function KitchenPage() {
   async function loadCancelled() {
     const data = await fetchList('orders', {
       select: SELECT,
-      build: q => q.eq('status', 'cancelled').order('created_at', { ascending: false }).limit(30)
+      build: q => q.eq('status', 'cancelled').neq('order_type', 'procurement').order('created_at', { ascending: false }).limit(30)
     })
     setCancelled(data)
   }
@@ -310,27 +284,12 @@ export default function KitchenPage() {
                     <div className="tline-top">
                       <span className="qty">{i.quantity}{i.unit_snapshot ? ` ${i.unit_snapshot}` : ''}</span>
                       <span className="tname">{i.item_name_snapshot}</span>
-                      <div className="seg tiny mlauto">
-                        <button className={i.fulfillment_type === 'make' ? 'on make' : ''} onClick={() => setFulfillment(i, 'make')}>🍳</button>
-                        <button className={i.fulfillment_type === 'purchase' ? 'on buy' : ''} onClick={() => setFulfillment(i, 'purchase')}>🛒</button>
-                      </div>
+                      {i.fulfillment_type === 'purchase' && <span className="tag buy mlauto">🛒</span>}
                     </div>
                     <div className="tline-tools">
                       <button className="linkbtn" onClick={() => setEditing({ itemId: i.id, mode: 'qty', qty: i.quantity })}>✏️ qty</button>
                       <button className="linkbtn" onClick={() => deleteItem(i)}>🗑 remove</button>
-                      <button className="linkbtn" onClick={() => setProcureFor({ itemId: i.id })}>📋 to buyer</button>
                     </div>
-                    {procureFor?.itemId === i.id && (
-                      <div className="inline-edit wrap">
-                        <span className="muted small">Buy & deliver to:</span>
-                        {locations.map(l => (
-                          <button key={l.id} className="mini" onClick={() => sendToProcurement(i, o, l.id)}>
-                            {l.name_en}{l.is_central ? ' (kitchen)' : ''}
-                          </button>
-                        ))}
-                        <button className="mini" onClick={() => setProcureFor(null)}>Cancel</button>
-                      </div>
-                    )}
 
                     {/* inline QTY editor (kitchen can correct the ordered amount) */}
                     {isEditing && editing.mode === 'qty' && (
@@ -476,26 +435,6 @@ function ByItem({ orders, range, onChanged }) {
   )
   const { make, buy, unsorted, adhoc } = useMemo(() => aggregateByItem(scope), [scope])
 
-  async function sendAllToBuyer() {
-    if (!buy.length) return
-    if (!confirm(`Send ${buy.length} purchase item(s) to the buyer's list?`)) return
-    const uid = (await supabase.auth.getUser()).data.user?.id
-    // groups are independent of each other, so fire them concurrently instead
-    // of one-at-a-time
-    await Promise.all(buy.map(async g => {
-      await insertRow('procurement_tasks', {
-        item_name: g.name, quantity: g.total, unit: g.unit || null,
-        target_location_id: null, created_by: uid, note: 'from weekly production aggregate'
-      })
-      // a product name can span rows in different states across stores (one
-      // store's line already dispatched, another's still pending) — only the
-      // still-pending ones are legal to send to the buyer
-      const pending = g.locItems.filter(li => isItemPending(li.status)).map(li => ({ id: li.id, dispatch_status: li.status }))
-      await transitionItemsBulk(pending, 'procuring')
-    }))
-    onChanged()
-  }
-
   // mark every store's line for this product as fully ready
   async function markGroupReady(g) {
     const movable = g.locItems.filter(li => canTransitionItem(li.status, 'ready'))
@@ -548,12 +487,11 @@ function ByItem({ orders, range, onChanged }) {
         <span className="muted small">Production summary — {scope.length} order(s){range === 'week' ? ', this week' : ''}</span>
         <div>
           <button className="ghost" onClick={() => window.print()}>🖨 Print</button>
-          {buy.length > 0 && <button className="primary" onClick={sendAllToBuyer}>Send all 🛒 to buyer ({buy.length})</button>}
         </div>
       </div>
       <MakeSection rows={make} onReady={markGroupReady} onPartial={applyPartial} />
       <Section title="🛒 To buy" rows={buy} tag="🛒" />
-      {unsorted.length > 0 && <Section title="❓ Not sorted yet (set 🍳/🛒 in By order)" rows={unsorted} tag="" />}
+      {unsorted.length > 0 && <Section title="❓ No fulfillment type (set a default in Catalog admin)" rows={unsorted} tag="" />}
       {adhoc.length > 0 && (
         <div className="prodsec">
           <div className="prodsec-h">✎ Custom items (not merged) <span className="muted">({adhoc.length})</span></div>
