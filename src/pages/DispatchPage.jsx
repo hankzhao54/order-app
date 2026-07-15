@@ -4,7 +4,7 @@ import { fetchList } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
 import {
-  transitionOrdersBulk, transitionItem, transitionItemsBulk,
+  transitionOrdersBulk, transitionItem,
   isItemPending, isItemReadyToDispatch, isItemWeekCloseTerminal
 } from '../lib/orderLifecycle'
 
@@ -42,55 +42,52 @@ export default function DispatchPage() {
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => i.id === itemId ? { ...i, ...fields } : i) })))
   }
   async function markReady(item) {
-    await transitionItem(item, 'ready', { fulfilled_qty: item.quantity, handled_by: user.id })
+    const { error } = await transitionItem(item, 'ready', { fulfilled_qty: item.quantity, handled_by: user.id })
+    if (error) { setMsg(error.message); load(); return }
     patchLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity })
   }
   async function markUnavailable(item, reason) {
-    await transitionItem(item, 'unavailable', { fulfilled_qty: 0, unavail_reason: reason, handled_by: user.id })
+    const { error } = await transitionItem(item, 'unavailable', { fulfilled_qty: 0, unavail_reason: reason, handled_by: user.id })
+    if (error) { setMsg(error.message); load(); return }
     patchLocal(item.id, { dispatch_status: 'unavailable', unavail_reason: reason }); setReasonFor(null)
   }
-  async function centralLoc() {
-    const { data } = await supabase.from('locations').select('id').eq('is_central', true).eq('is_active', true).limit(1).maybeSingle()
-    return data?.id || null
-  }
+  // Status flip + stock check + FIFO consumption + stock move all happen in
+  // ONE database transaction (ordering.dispatch_items) — all-or-nothing, with
+  // batch row locks so concurrent dispatches can't oversell. On failure the
+  // RPC's error message says exactly which item lacked stock.
   async function dispatchItem(item) {
-    await transitionItem(item, 'dispatched')
+    const { error } = await supabase.rpc('dispatch_items', { p_item_ids: [item.id] })
+    if (error) { setMsg(error.message); load(); return }
+    setMsg('')
     patchLocal(item.id, { dispatch_status: 'dispatched' })
-    if (item.catalog_item_id && item.fulfillment_type === 'make') {
-      const qty = Number(item.fulfilled_qty ?? item.quantity) || 0
-      const c = await centralLoc()
-      if (qty && c) await supabase.rpc('consume_fifo', { p_loc: c, p_item: item.catalog_item_id, p_qty: qty, p_reason: 'dispatched', p_order_item: item.id })
-    }
   }
   async function dispatchAllReady(locItems) {
-    const ready = locItems.filter(i => isItemReadyToDispatch(i.dispatch_status))
-    const ids = ready.map(i => i.id)
+    const ids = locItems.filter(i => isItemReadyToDispatch(i.dispatch_status)).map(i => i.id)
     if (!ids.length) return
-    await transitionItemsBulk(ready, 'dispatched')
+    const { error } = await supabase.rpc('dispatch_items', { p_item_ids: ids })
+    if (error) { setMsg(error.message); load(); return }
+    setMsg('')
     setOrders(os => os.map(o => ({ ...o, items: o.items.map(i => ids.includes(i.id) ? { ...i, dispatch_status: 'dispatched' } : i) })))
-    const c = await centralLoc()
-    // consume_fifo mutates shared stock-batch state for (location, item), so
-    // calls for the same item must stay serial to avoid a race in FIFO
-    // consumption order; only the bulk status update above was parallelizable.
-    for (const it of ready) {
-      if (c && it.catalog_item_id && it.fulfillment_type === 'make') {
-        const qty = Number(it.fulfilled_qty ?? it.quantity) || 0
-        if (qty) await supabase.rpc('consume_fifo', { p_loc: c, p_item: it.catalog_item_id, p_qty: qty, p_reason: 'dispatched', p_order_item: it.id })
-      }
-    }
   }
 
+  // Store names, item names (incl. free-text custom items) and units are
+  // untrusted input — escape everything interpolated into the print HTML.
+  function esc(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ))
+  }
   function printSlip(locName, items) {
     const rows = items
       .filter(i => i.dispatch_status !== 'unavailable')
       .map(i => {
         const qty = i.dispatch_status === 'short' ? `${i.fulfilled_qty}/${i.quantity}` : i.quantity
         const tag = i.fulfillment_type === 'purchase' ? '🛒' : '🍳'
-        return `<tr><td class="chk">☐</td><td>${tag} ${i.item_name_snapshot}</td><td class="q">${qty}${i.unit_snapshot ? ' ' + i.unit_snapshot : ''}</td></tr>`
+        return `<tr><td class="chk">☐</td><td>${tag} ${esc(i.item_name_snapshot)}</td><td class="q">${esc(qty)}${i.unit_snapshot ? ' ' + esc(i.unit_snapshot) : ''}</td></tr>`
       }).join('')
     const today = new Date().toLocaleDateString()
     const w = window.open('', '_blank', 'width=420,height=640')
-    w.document.write(`<html><head><title>Delivery slip — ${locName}</title>
+    w.document.write(`<html><head><title>Delivery slip — ${esc(locName)}</title>
       <style>
         body{font-family:system-ui,Arial,sans-serif;padding:24px;color:#111}
         h1{font-size:20px;margin:0 0 2px} .sub{color:#666;font-size:13px;margin-bottom:16px}
@@ -98,7 +95,7 @@ export default function DispatchPage() {
         .chk{width:28px;font-size:18px} .q{text-align:right;white-space:nowrap;font-weight:600}
         .foot{margin-top:24px;font-size:13px;color:#666}
       </style></head><body>
-      <h1>🚚 Delivery — ${locName}</h1>
+      <h1>🚚 Delivery — ${esc(locName)}</h1>
       <div class="sub">${today} · ${items.filter(i => i.dispatch_status !== 'unavailable').length} items</div>
       <table>${rows}</table>
       <div class="foot">Received by: ____________________  Signature: ____________________</div>

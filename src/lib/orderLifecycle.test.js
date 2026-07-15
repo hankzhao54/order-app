@@ -1,17 +1,26 @@
 import { describe, it, expect, vi } from 'vitest'
 
-// orderLifecycle.js (via db.js) talks to supabase for the actual writes.
-// We only want to exercise the state-machine validation here, so the
-// client is mocked to a no-op chain that always "succeeds" — that lets us
-// assert legal transitions resolve without hitting the network, while
-// illegal transitions still throw LifecycleError before ever reaching it.
+// orderLifecycle.js talks to supabase for the actual writes. We only want to
+// exercise the state-machine validation and the compare-and-swap behavior
+// here, so the client is mocked with a chain that tracks which ids the
+// guarded update targeted and "updates" all of them — except the sentinel
+// id 'stale', which simulates a row another client already moved (the
+// .eq(status, expected) filter matches zero rows for it).
 vi.mock('./supabase', () => {
-  const resolved = () => Promise.resolve({ data: null, error: null })
-  const chain = {
-    update: vi.fn(() => ({ eq: vi.fn(resolved), in: vi.fn(resolved) })),
-    upsert: vi.fn(resolved),
+  function makeChain() {
+    const state = { ids: [] }
+    const chain = {
+      update: vi.fn(() => chain),
+      eq: vi.fn((col, val) => { if (col === 'id') state.ids = [val]; return chain }),
+      in: vi.fn((col, vals) => { if (col === 'id') state.ids = vals; return chain }),
+      select: vi.fn(() => Promise.resolve({
+        data: state.ids.filter(id => id !== 'stale').map(id => ({ id })),
+        error: null,
+      })),
+    }
+    return chain
   }
-  return { supabase: { from: vi.fn(() => chain) } }
+  return { supabase: { from: vi.fn(() => makeChain()) } }
 })
 
 import {
@@ -49,8 +58,8 @@ const ITEM_LEGAL = {
   pending: ['ready', 'short', 'unavailable', 'procuring'],
   ready: ['pending', 'dispatched', 'procuring'],
   short: ['pending', 'dispatched'],
-  unavailable: ['pending'],
-  procuring: ['pending', 'ready'],
+  unavailable: ['pending', 'procuring'],           // reopen a "can't buy" line
+  procuring: ['pending', 'ready', 'unavailable'],  // buyer marks it unavailable
   dispatched: ['received'],
   received: [],
 }
@@ -100,6 +109,11 @@ describe('order_items.dispatch_status state machine', () => {
 
   it('allows the procuring → ready undo path (ProcurementPage.reopen)', () => {
     expect(canTransitionItem('procuring', 'ready')).toBe(true)
+  })
+
+  it('allows the buy-list unavailable cascade (procuring → unavailable → procuring)', () => {
+    expect(canTransitionItem('procuring', 'unavailable')).toBe(true)
+    expect(canTransitionItem('unavailable', 'procuring')).toBe(true)
   })
 
   it('does not allow undoing dispatched/received back to pending', () => {
@@ -213,6 +227,41 @@ describe('transitionItem / transitionItemsBulk / transitionItemsUpsert', () => {
       { id: '2', fromDispatchStatus: 'received', toDispatchStatus: 'pending', fields: {} },
     ]
     await expect(transitionItemsUpsert(rows)).rejects.toBeInstanceOf(LifecycleError)
+  })
+})
+
+describe('optimistic concurrency (compare-and-swap)', () => {
+  // The sentinel id 'stale' simulates another client having already moved
+  // the row: the guarded update matches zero rows.
+  it('transitionOrder surfaces a stale-state error instead of overwriting', async () => {
+    const { error } = await transitionOrder({ id: 'stale', status: 'submitted' }, 'in_progress')
+    expect(error).toBeInstanceOf(LifecycleError)
+    expect(error.message).toMatch(/reload/i)
+  })
+
+  it('transitionItem surfaces a stale-state error', async () => {
+    const { error } = await transitionItem({ id: 'stale', dispatch_status: 'pending' }, 'ready')
+    expect(error).toBeInstanceOf(LifecycleError)
+  })
+
+  it('transitionItemsBulk fails as a whole when one row is stale', async () => {
+    const items = [{ id: '1', dispatch_status: 'pending' }, { id: 'stale', dispatch_status: 'pending' }]
+    const { error } = await transitionItemsBulk(items, 'ready')
+    expect(error).toBeInstanceOf(LifecycleError)
+  })
+
+  it('transitionProcurementTask surfaces a stale-state error', async () => {
+    const { error } = await transitionProcurementTask({ id: 'stale', status: 'pending' }, 'bought')
+    expect(error).toBeInstanceOf(LifecycleError)
+  })
+
+  it('two clients moving the same row: first wins, second gets the stale error', async () => {
+    // client A moved i1 pending → ready on the server; client B still has the
+    // cached 'pending' row. B's guarded update matches nothing.
+    const ok = await transitionItem({ id: 'i1', dispatch_status: 'pending' }, 'ready')
+    expect(ok.error).toBeNull()
+    const b = await transitionItem({ id: 'stale', dispatch_status: 'pending' }, 'ready')
+    expect(b.error).toBeInstanceOf(LifecycleError)
   })
 })
 

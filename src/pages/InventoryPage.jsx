@@ -78,7 +78,8 @@ export default function InventoryPage() {
   }
   async function scrapBatch(batch, itemId) {
     if (!confirm('Throw away this batch? Stock will be reduced and logged as scrap.')) return
-    await supabase.rpc('scrap_batch', { p_batch: batch.id, p_note: 'expired/scrapped' })
+    const { error } = await supabase.rpc('scrap_batch', { p_batch: batch.id, p_note: 'expired/scrapped' })
+    if (error) { setMsg(error.message); return }
     await load()
   }
   async function sendBack(item, qty) {
@@ -100,12 +101,14 @@ export default function InventoryPage() {
   async function editBatchQty(batch, newQty, itemId) {
     const n = Number(newQty)
     if (isNaN(n) || n < 0) return
-    await patchRow('stock_batches', batch.id, { qty: n })
+    const { error } = await patchRow('stock_batches', batch.id, { qty: n })
+    if (error) { setMsg(error.message); await load(); return }
     await supabase.rpc('sync_loc_qty', { p_loc: locId, p_item: itemId })
     await load()
   }
   async function deleteBatch(batch, itemId) {
-    await supabase.from('stock_batches').delete().eq('id', batch.id)
+    const { error } = await supabase.from('stock_batches').delete().eq('id', batch.id)
+    if (error) { setMsg(error.message); await load(); return }
     await supabase.rpc('sync_loc_qty', { p_loc: locId, p_item: itemId })
     await load()
   }
@@ -119,8 +122,9 @@ export default function InventoryPage() {
     setCounted(c => ({ ...c, [edit.id]: true })); setEdit(null); setMsg('')
   }
   async function saveLoc(item, storage) {
+    const { error } = await supabase.from('location_stock').update({ storage_location: storage || null }).eq('location_id', locId).eq('catalog_item_id', item.id)
+    if (error) { setMsg(error.message); return }
     setRows(p => p.map(r => r.catalog_item_id === item.id ? { ...r, storage_location: storage } : r))
-    await supabase.from('location_stock').update({ storage_location: storage || null }).eq('location_id', locId).eq('catalog_item_id', item.id)
   }
   async function addItem(catId) {
     const { error } = await supabase.rpc('add_loc_item', { p_loc: locId, p_item: catId })
@@ -129,7 +133,8 @@ export default function InventoryPage() {
   }
   async function removeItem(item) {
     if (!confirm(`Remove ${item.name_en} from this location's stocktake list?`)) return
-    await supabase.from('location_stock').delete().eq('location_id', locId).eq('catalog_item_id', item.id)
+    const { error } = await supabase.from('location_stock').delete().eq('location_id', locId).eq('catalog_item_id', item.id)
+    if (error) { setMsg(error.message); return }
     setRows(p => p.filter(r => r.catalog_item_id !== item.id))
   }
 
@@ -462,15 +467,18 @@ function Receiving({ canPickLoc, locs, myLoc, catMap, onReceived }) {
 
   async function receive(item) {
     const qty = Number(item.fulfilled_qty ?? item.quantity) || 0
-    await transitionItem(item, 'received')
+    const { error } = await transitionItem(item, 'received')
+    if (error) { alert(error.message); load(); return }
     if (item.catalog_item_id && qty) {
-      await supabase.rpc('add_batch', { p_loc: locId, p_item: item.catalog_item_id, p_qty: qty, p_produced: new Date().toISOString().slice(0,10), p_expires: null, p_note: 'received' })
+      const { error: e2 } = await supabase.rpc('add_batch', { p_loc: locId, p_item: item.catalog_item_id, p_qty: qty, p_produced: new Date().toISOString().slice(0,10), p_expires: null, p_note: 'received' })
+      if (e2) { alert(e2.message); load(); return }
     }
     setRows(p => p.filter(r => r.id !== item.id))
     onReceived && onReceived()
   }
   async function receiveReturn(r) {
-    await supabase.rpc('receive_return', { p_return: r.id })
+    const { error } = await supabase.rpc('receive_return', { p_return: r.id })
+    if (error) { alert(error.message); load(); return }
     setReturns(p => p.filter(x => x.id !== r.id))
     onReceived && onReceived()
   }

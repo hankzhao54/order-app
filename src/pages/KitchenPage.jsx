@@ -6,7 +6,7 @@ import { thisMonday } from '../lib/cutoff'
 import { BUCKET_LABELS, bucketOf, groupKey, buildOrderGroups, aggregateByItem, inThisWeek } from '../lib/kitchen'
 import { SkeletonCards } from '../components/Skeleton'
 import {
-  transitionOrder, transitionOrdersBulk, transitionItem, transitionItemsBulk, transitionItemsUpsert,
+  transitionOrder, transitionOrdersBulk, transitionItem,
   canTransitionItem, isItemPending, isItemHandled, isOrderCompleted
 } from '../lib/orderLifecycle'
 
@@ -28,7 +28,6 @@ export default function KitchenPage() {
   const [range, setRange] = useState('open')       // open | week
   const [showCompleted, setShowCompleted] = useState(false)
   const [stock, setStock] = useState({})              // catalog_item_id -> qty
-  const [centralId, setCentralId] = useState(null)
   const [expanded, setExpanded] = useState({})   // groupKey -> bool (override default fold)
 
   async function load() {
@@ -51,12 +50,24 @@ export default function KitchenPage() {
   async function loadStock() {
     const { data: central } = await supabase.from('locations').select('id').eq('is_central', true).eq('is_active', true).limit(1).maybeSingle()
     if (!central) { setStock({}); return }
-    setCentralId(central.id)
-    const data = await fetchList('location_stock', {
-      select: 'catalog_item_id, qty, item:catalog_items(stock_unit)',
-      build: q => q.eq('location_id', central.id).gt('qty', 0)
-    })
-    const m = {}; for (const r of data) m[r.catalog_item_id] = { qty: Number(r.qty), unit: r.item?.stock_unit || '' }
+    const [data, resv] = await Promise.all([
+      fetchList('location_stock', {
+        select: 'catalog_item_id, qty, item:catalog_items(stock_unit)',
+        build: q => q.eq('location_id', central.id).gt('qty', 0)
+      }),
+      // stock already promised to other order lines isn't offerable again
+      fetchList('stock_reservations', {
+        select: 'catalog_item_id, qty',
+        build: q => q.eq('location_id', central.id)
+      })
+    ])
+    const reserved = {}
+    for (const r of resv) reserved[r.catalog_item_id] = (reserved[r.catalog_item_id] || 0) + Number(r.qty)
+    const m = {}
+    for (const r of data) {
+      const avail = Number(r.qty) - (reserved[r.catalog_item_id] || 0)
+      if (avail > 0) m[r.catalog_item_id] = { qty: avail, unit: r.item?.stock_unit || '' }
+    }
     setStock(m)
   }
   useEffect(() => { loadStock() }, [])
@@ -69,47 +80,52 @@ export default function KitchenPage() {
   async function ensureStarted(orderId) {
     const o = orders.find(x => x.id === orderId)
     if (o && o.status === 'submitted') {
-      await transitionOrder(o, 'in_progress')
+      const { error } = await transitionOrder(o, 'in_progress')
+      if (error) { alert(error.message); load(); return false }
       setOrders(os => os.map(x => x.id === orderId ? { ...x, status: 'in_progress' } : x))
     }
+    return true
   }
+  // Production confirm / use-stock / undo all run as single DB transactions
+  // (see supabase/migrations/005_stock_rpcs.sql): stock, stock moves and the
+  // status flip can't diverge, and double clicks can't double-add stock.
   async function fulfillFromStock(item, orderId) {
     setEditing(null)
-    await ensureStarted(orderId)
-    await transitionItem(item, 'ready', { fulfilled_qty: item.quantity, unavail_reason: null })
+    if (!await ensureStarted(orderId)) return
+    const { error } = await supabase.rpc('kitchen_use_stock', { p_item: item.id })
+    if (error) { alert(error.message); load(); loadStock(); return }
     patchItemLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity, unavail_reason: null })
-    // fulfilled from existing stock: no production added; stock will be reduced on dispatch.
-    // reflect the reservation locally so the prompt updates
-    setStock(s => ({ ...s, [item.catalog_item_id]: { ...s[item.catalog_item_id], qty: Math.max(0, (s[item.catalog_item_id]?.qty || 0) - Number(item.quantity)) } }))
-  }
-  async function bumpStock(item, qty, reason) {
-    if (!item.catalog_item_id || item.fulfillment_type !== 'make' || !qty || !centralId) return
-    await supabase.rpc('add_batch', { p_loc: centralId, p_item: item.catalog_item_id, p_qty: qty, p_produced: new Date().toISOString().slice(0, 10), p_expires: null, p_note: null })
+    loadStock()   // reservation changed what's promisable — refresh from the server
   }
   async function setReady(item, orderId) {
     setEditing(null)
-    await ensureStarted(orderId)
-    await transitionItem(item, 'ready', { fulfilled_qty: item.quantity, unavail_reason: null })
+    if (!await ensureStarted(orderId)) return
+    const { error } = await supabase.rpc('kitchen_set_produced', { p_rows: [{ id: item.id, fulfilled: Number(item.quantity) }] })
+    if (error) { alert(error.message); load(); return }
     patchItemLocal(item.id, { dispatch_status: 'ready', fulfilled_qty: item.quantity, unavail_reason: null })
-    bumpStock(item, Number(item.quantity), 'produced')
+    loadStock()
   }
   async function confirmShort(item, orderId, qty) {
-    await ensureStarted(orderId)
-    await transitionItem(item, 'short', { fulfilled_qty: qty, unavail_reason: null })
+    if (!await ensureStarted(orderId)) return
+    const { error } = await supabase.rpc('kitchen_set_produced', { p_rows: [{ id: item.id, fulfilled: Number(qty) }] })
+    if (error) { alert(error.message); load(); return }
     patchItemLocal(item.id, { dispatch_status: 'short', fulfilled_qty: qty, unavail_reason: null })
-    bumpStock(item, Number(qty), 'produced')
     setEditing(null)
+    loadStock()
   }
   async function confirmNone(item, orderId, reason) {
-    await ensureStarted(orderId)
-    await transitionItem(item, 'unavailable', { fulfilled_qty: 0, unavail_reason: reason })
+    if (!await ensureStarted(orderId)) return
+    const { error } = await transitionItem(item, 'unavailable', { fulfilled_qty: 0, unavail_reason: reason })
+    if (error) { alert(error.message); load(); return }
     patchItemLocal(item.id, { dispatch_status: 'unavailable', fulfilled_qty: 0, unavail_reason: reason })
     setEditing(null)
   }
   async function resetItem(item) {
     setEditing(null)
-    await transitionItem(item, 'pending', { fulfilled_qty: null, unavail_reason: null })
+    const { error } = await supabase.rpc('kitchen_reset_item', { p_item: item.id })
+    if (error) { alert(error.message); load(); loadStock(); return }
     patchItemLocal(item.id, { dispatch_status: 'pending', fulfilled_qty: null, unavail_reason: null })
+    loadStock()   // undoing production / releasing a reservation changed stock
   }
   async function completeOrder(orderId) {
     const o = orders.find(x => x.id === orderId)
@@ -144,19 +160,22 @@ export default function KitchenPage() {
   }
 
   async function saveQty(item, qty) {
-    await patchRow('order_items', item.id, { quantity: qty })
+    const { error } = await patchRow('order_items', item.id, { quantity: qty })
+    if (error) { alert(error.message); load(); return }
     patchItemLocal(item.id, { quantity: qty })
     setEditing(null)
   }
   async function deleteItem(item) {
     if (!confirm(`Delete "${item.item_name_snapshot}" from this order?`)) return
-    await supabase.from('order_items').delete().eq('id', item.id)
+    const { error } = await supabase.from('order_items').delete().eq('id', item.id)
+    if (error) { alert(error.message); load(); return }
     setOrders(os => os.map(o => ({ ...o, items: o.items.filter(i => i.id !== item.id) })))
   }
   async function cancelOrder(orderId) {
     if (!confirm('Cancel this whole order? It will move to the cancelled list (recoverable).')) return
     const o = orders.find(x => x.id === orderId)
-    await transitionOrder(o, 'cancelled')
+    const { error } = await transitionOrder(o, 'cancelled')
+    if (error) { alert(error.message); load(); return }
     setOrders(os => os.filter(o => o.id !== orderId))
   }
   async function loadCancelled() {
@@ -172,7 +191,8 @@ export default function KitchenPage() {
     // item before the cancel, that progress is still on the rows — go back
     // to 'in_progress' instead of always resetting to 'submitted'.
     const target = o.items.some(i => isItemHandled(i.dispatch_status)) ? 'in_progress' : 'submitted'
-    await transitionOrder(o, target)
+    const { error } = await transitionOrder(o, target)
+    if (error) { alert(error.message); loadCancelled(); return }
     setCancelled(cs => cs.filter(o => o.id !== orderId))
     load()
   }
@@ -435,16 +455,16 @@ function ByItem({ orders, range, onChanged }) {
   )
   const { make, buy, unsorted, adhoc } = useMemo(() => aggregateByItem(scope), [scope])
 
-  // mark every store's line for this product as fully ready
+  // mark every store's still-pending line for this product as fully made.
+  // One DB transaction: statuses, fulfilled quantities and the production
+  // stock batch land together or not at all (was two separate writes before).
   async function markGroupReady(g) {
-    const movable = g.locItems.filter(li => canTransitionItem(li.status, 'ready'))
-    await transitionItemsBulk(movable.map(li => ({ id: li.id, dispatch_status: li.status })), 'ready')
-    // ready means fulfilled = ordered qty; set per row to be exact. Values
-    // differ per row so this can't be one bulk .update(), but a single
-    // upsert still does it in one round trip instead of N sequential ones.
-    if (movable.length) {
-      await supabase.from('order_items').upsert(movable.map(li => ({ id: li.id, fulfilled_qty: li.qty })))
-    }
+    const rows = g.locItems
+      .filter(li => isItemPending(li.status))
+      .map(li => ({ id: li.id, fulfilled: Number(li.qty) }))
+    if (!rows.length) return
+    const { error } = await supabase.rpc('kitchen_set_produced', { p_rows: rows })
+    if (error) alert(error.message)
     onChanged()
   }
   // apply per-store actual quantities: full -> ready, less -> short
@@ -452,12 +472,12 @@ function ByItem({ orders, range, onChanged }) {
     const rows = []
     for (const li of g.locItems) {
       const got = Number(made[li.id])
-      if (isNaN(got)) continue
-      const toDispatchStatus = got >= li.qty ? 'ready' : 'short'
-      if (!canTransitionItem(li.status, toDispatchStatus)) continue
-      rows.push({ id: li.id, fromDispatchStatus: li.status, toDispatchStatus, fields: { fulfilled_qty: got } })
+      if (isNaN(got) || got <= 0 || !isItemPending(li.status)) continue
+      rows.push({ id: li.id, fulfilled: got })
     }
-    await transitionItemsUpsert(rows)
+    if (!rows.length) return
+    const { error } = await supabase.rpc('kitchen_set_produced', { p_rows: rows })
+    if (error) alert(error.message)
     onChanged()
   }
 

@@ -3,47 +3,15 @@ import { supabase } from '../lib/supabase'
 import { fetchList, insertRow } from '../lib/db'
 import { useAuth } from '../lib/AuthProvider'
 import { useRealtimeReload } from '../lib/useRealtimeReload'
-import { transitionProcurementTask, transitionItem, transitionOrder, LifecycleError } from '../lib/orderLifecycle'
+// All task status changes go through ordering.set_procurement_task_status /
+// ordering.delete_procurement_task (supabase/migrations/006_order_rpcs.sql):
+// the task update, the order-line cascade (bought -> ready, unavailable ->
+// unavailable, reopen -> procuring) and the parent procurement-order
+// recompute happen in ONE database transaction. A crash mid-way can no
+// longer leave a line stuck in 'procuring' or an order wrongly completed.
 
 const SELECT = `id,item_name,quantity,unit,status,note,unavail_reason,
   target_location_id,target:locations(name_en),catalog_item_id,source_order_item_id,created_by,created_at,bought_at`
-
-// Procurement orders (order_type 'procurement') never pass through the
-// kitchen, so nobody would ever mark them complete. Keep the parent order's
-// status in sync with its buy-list tasks: complete it when every line is
-// bought, reopen it if a bought line is reopened.
-async function syncProcurementOrder(orderItemId) {
-  const { data: it } = await supabase.from('order_items')
-    .select('order:orders(id, status, order_type, items:order_items(dispatch_status))')
-    .eq('id', orderItemId).maybeSingle()
-  const o = it?.order
-  if (!o || o.order_type !== 'procurement' || ['cancelled', 'archived'].includes(o.status)) return
-  const allDone = o.items.length > 0 && o.items.every(i => ['ready', 'dispatched', 'received'].includes(i.dispatch_status))
-  try {
-    if (allDone && o.status !== 'completed') {
-      let cur = o
-      if (cur.status === 'submitted') {
-        const { error } = await transitionOrder(cur, 'in_progress')
-        if (error) return
-        cur = { ...cur, status: 'in_progress' }
-      }
-      await transitionOrder(cur, 'completed', { completed_at: new Date().toISOString() })
-    } else if (!allDone && o.status === 'completed') {
-      await transitionOrder(o, 'in_progress', { completed_at: null })
-    }
-  } catch (e) {
-    if (!(e instanceof LifecycleError)) throw e
-  }
-}
-
-// when a bought task cascades its order line to 'ready'
-async function cascadeBought(t, userId) {
-  if (!t.source_order_item_id) return
-  // every task with a source_order_item_id was created with the line in
-  // 'procuring' — that's the assumed from-state (same as before).
-  await transitionItem({ id: t.source_order_item_id, dispatch_status: 'procuring' }, 'ready', { fulfilled_qty: t.quantity, handled_by: userId })
-  await syncProcurementOrder(t.source_order_item_id)
-}
 
 const CANT_REASONS = ['Out of stock', 'Too expensive', 'Not found']
 
@@ -90,10 +58,15 @@ export default function ProcurementPage() {
   useEffect(() => { load(); loadDone() }, [])
   useRealtimeReload(['procurement_tasks'], () => { load(); loadDone() }, editingNone !== null)
 
+  async function setTaskStatus(t, to, reason = null) {
+    const { error } = await supabase.rpc('set_procurement_task_status', {
+      p_task: t.id, p_to: to, p_reason: reason
+    })
+    if (error) { alert(error.message); load(); loadDone(); return false }
+    return true
+  }
   async function markBought(t) {
-    const { error } = await transitionProcurementTask(t, 'bought', { bought_by: user.id })
-    if (error) { alert(error.message); return }
-    await cascadeBought(t, user.id)
+    if (!await setTaskStatus(t, 'bought')) return
     setTasks(ts => ts.filter(x => x.id !== t.id))
     loadDone()
   }
@@ -102,9 +75,7 @@ export default function ProcurementPage() {
     setBusy(true)
     try {
       for (const t of list) {
-        const { error } = await transitionProcurementTask(t, 'bought', { bought_by: user.id })
-        if (error) { alert(error.message); break }
-        await cascadeBought(t, user.id)
+        if (!await setTaskStatus(t, 'bought')) break
       }
     } finally {
       setBusy(false)
@@ -112,32 +83,19 @@ export default function ProcurementPage() {
     }
   }
   async function markUnavailable(t, reason) {
-    const { error } = await transitionProcurementTask(t, 'unavailable', { unavail_reason: reason, bought_by: user.id })
-    if (error) { alert(error.message); return }
+    if (!await setTaskStatus(t, 'unavailable', reason)) return
     setTasks(ts => ts.filter(x => x.id !== t.id)); setEditingNone(null)
     loadDone()
   }
   async function reopen(t) {
-    const { error } = await transitionProcurementTask(t, 'pending', { unavail_reason: null })
-    if (error) { alert(error.message); return }
-    // mirror markBought's forward cascade: if this task was linked to an
-    // order line and that line hasn't moved past 'ready' yet (i.e. not
-    // dispatched/received in the meantime), send it back to the buyer queue
-    // too. Best-effort — if the line already moved on, leave it alone.
-    if (t.source_order_item_id) {
-      try {
-        await transitionItem({ id: t.source_order_item_id, dispatch_status: 'ready' }, 'procuring')
-      } catch (e) {
-        if (!(e instanceof LifecycleError)) throw e
-      }
-      await syncProcurementOrder(t.source_order_item_id)
-    }
+    if (!await setTaskStatus(t, 'pending')) return
     setDone(ds => ds.filter(x => x.id !== t.id))
     load()
   }
   async function removeTask(t) {
     if (!confirm(`Remove "${t.item_name}" from the buy list?`)) return
-    await supabase.from('procurement_tasks').delete().eq('id', t.id)
+    const { error } = await supabase.rpc('delete_procurement_task', { p_task: t.id })
+    if (error) { alert(error.message); load(); return }
     setTasks(ts => ts.filter(x => x.id !== t.id))
   }
 

@@ -12,7 +12,20 @@
 // a transition (stock RPCs, procurement_tasks rows, etc.) stay in the
 // calling page, same as before.
 import { supabase } from './supabase'
-import { patchRow } from './db'
+
+// All writes here are optimistic-concurrency safe: the UPDATE carries the
+// expected from-state (.eq(status, from)) and we check a row was actually
+// updated. If another client already moved the row, the write matches zero
+// rows and we surface a stale-state error instead of silently overwriting.
+// The database additionally rejects illegal jumps via triggers
+// (supabase/migrations/004_state_machine_guards.sql) — this module is the
+// convenience layer, the DB is the enforcement layer.
+function staleError(entity, from, to) {
+  return new LifecycleError(
+    `Someone else already changed this ${entity} (expected ${from}) — reload and retry`,
+    { entity, from, to }
+  )
+}
 
 export class LifecycleError extends Error {
   constructor(message, { entity, from, to } = {}) {
@@ -71,7 +84,13 @@ export function isOrderCompleted(status) {
 // `order` in hand, this avoids an extra round trip.
 export async function transitionOrder(order, toStatus, extra = {}) {
   assertOrderTransition(order.status, toStatus)
-  return patchRow('orders', order.id, { status: toStatus, ...extra })
+  const { data, error } = await supabase.from('orders')
+    .update({ status: toStatus, ...extra })
+    .eq('id', order.id).eq('status', order.status)   // compare-and-swap
+    .select('id')
+  if (error) return { error }
+  if (!data?.length) return { error: staleError('order', order.status, toStatus) }
+  return { error: null }
 }
 
 // Bulk version (KitchenPage finishWeek, DispatchPage closeWeek). Validates
@@ -79,9 +98,22 @@ export async function transitionOrder(order, toStatus, extra = {}) {
 export async function transitionOrdersBulk(orders, toStatus, extra = {}) {
   for (const o of orders) assertOrderTransition(o.status, toStatus)
   if (!orders.length) return { error: null }
-  const ids = orders.map(o => o.id)
-  const { error } = await supabase.from('orders').update({ status: toStatus, ...extra }).in('id', ids)
-  return { error }
+  // rows may start from different (all-legal) statuses — one guarded update
+  // per from-status group, and verify every row was actually moved
+  const byFrom = new Map()
+  for (const o of orders) {
+    if (!byFrom.has(o.status)) byFrom.set(o.status, [])
+    byFrom.get(o.status).push(o.id)
+  }
+  for (const [from, ids] of byFrom) {
+    const { data, error } = await supabase.from('orders')
+      .update({ status: toStatus, ...extra })
+      .in('id', ids).eq('status', from)
+      .select('id')
+    if (error) return { error }
+    if ((data?.length || 0) !== ids.length) return { error: staleError('order', from, toStatus) }
+  }
+  return { error: null }
 }
 
 // ---------------------------------------------------------------------
@@ -104,8 +136,10 @@ const ITEM_DISPATCH_TRANSITIONS = {
   // bought-then-reopened task's line back to the buyer queue.
   ready: ['pending', 'dispatched', 'procuring'],
   short: ['pending', 'dispatched'],
-  unavailable: ['pending'],
-  procuring: ['pending', 'ready'],
+  // unavailable -> procuring: a "can't buy" line whose buy-list entry is reopened
+  unavailable: ['pending', 'procuring'],
+  // procuring -> unavailable: the buyer marked the linked buy-list entry unavailable
+  procuring: ['pending', 'ready', 'unavailable'],
   // once an item has left the kitchen (dispatched) or been confirmed at the
   // destination (received), Kitchen's "tap to redo" no longer offers pending
   // as a target — undoing either doesn't reverse the stock already consumed
@@ -150,7 +184,13 @@ export function isItemWeekCloseTerminal(dispatchStatus) {
 export async function transitionItem(item, toDispatchStatus, extra = {}) {
   assertItemTransition(item.dispatch_status, toDispatchStatus)
   const fields = { dispatch_status: toDispatchStatus, status: itemStatusFor(toDispatchStatus), ...extra }
-  return patchRow('order_items', item.id, fields)
+  const { data, error } = await supabase.from('order_items')
+    .update(fields)
+    .eq('id', item.id).eq('dispatch_status', item.dispatch_status)   // compare-and-swap
+    .select('id')
+  if (error) return { error }
+  if (!data?.length) return { error: staleError('item', item.dispatch_status, toDispatchStatus) }
+  return { error: null }
 }
 
 // Bulk version where every row in `items` moves to the same toDispatchStatus
@@ -159,26 +199,42 @@ export async function transitionItem(item, toDispatchStatus, extra = {}) {
 export async function transitionItemsBulk(items, toDispatchStatus, extra = {}) {
   for (const it of items) assertItemTransition(it.dispatch_status, toDispatchStatus)
   if (!items.length) return { error: null }
-  const ids = items.map(it => it.id)
   const fields = { dispatch_status: toDispatchStatus, status: itemStatusFor(toDispatchStatus), ...extra }
-  const { error } = await supabase.from('order_items').update(fields).in('id', ids)
-  return { error }
+  const byFrom = new Map()
+  for (const it of items) {
+    if (!byFrom.has(it.dispatch_status)) byFrom.set(it.dispatch_status, [])
+    byFrom.get(it.dispatch_status).push(it.id)
+  }
+  for (const [from, ids] of byFrom) {
+    const { data, error } = await supabase.from('order_items')
+      .update(fields)
+      .in('id', ids).eq('dispatch_status', from)   // compare-and-swap
+      .select('id')
+    if (error) return { error }
+    if ((data?.length || 0) !== ids.length) return { error: staleError('item', from, toDispatchStatus) }
+  }
+  return { error: null }
 }
 
-// Upsert version for per-row targets/fields (KitchenPage ByItem applyPartial,
-// where some rows go to 'ready' and others to 'short' with different
-// fulfilled_qty). Each row: { id, fromDispatchStatus, toDispatchStatus, fields }.
+// Per-row targets/fields with compare-and-swap semantics. Each row:
+// { id, fromDispatchStatus, toDispatchStatus, fields }. Runs the guarded
+// updates concurrently and fails if any row was changed by someone else.
+// (Kitchen production paths now use the ordering.kitchen_set_produced RPC
+// instead — this stays for any remaining mixed-target callers.)
 export async function transitionItemsUpsert(rows) {
   for (const r of rows) assertItemTransition(r.fromDispatchStatus, r.toDispatchStatus)
   if (!rows.length) return { error: null }
-  const payload = rows.map(r => ({
-    id: r.id,
-    dispatch_status: r.toDispatchStatus,
-    status: itemStatusFor(r.toDispatchStatus),
-    ...r.fields,
-  }))
-  const { error } = await supabase.from('order_items').upsert(payload)
-  return { error }
+  const results = await Promise.all(rows.map(r =>
+    supabase.from('order_items')
+      .update({ dispatch_status: r.toDispatchStatus, status: itemStatusFor(r.toDispatchStatus), ...r.fields })
+      .eq('id', r.id).eq('dispatch_status', r.fromDispatchStatus)
+      .select('id')
+  ))
+  for (let i = 0; i < results.length; i++) {
+    if (results[i].error) return { error: results[i].error }
+    if (!results[i].data?.length) return { error: staleError('item', rows[i].fromDispatchStatus, rows[i].toDispatchStatus) }
+  }
+  return { error: null }
 }
 
 // ---------------------------------------------------------------------
@@ -204,5 +260,11 @@ function assertProcurementTransition(from, to) {
 
 export async function transitionProcurementTask(task, toStatus, extra = {}) {
   assertProcurementTransition(task.status, toStatus)
-  return patchRow('procurement_tasks', task.id, { status: toStatus, ...extra })
+  const { data, error } = await supabase.from('procurement_tasks')
+    .update({ status: toStatus, ...extra })
+    .eq('id', task.id).eq('status', task.status)   // compare-and-swap
+    .select('id')
+  if (error) return { error }
+  if (!data?.length) return { error: staleError('procurement_task', task.status, toStatus) }
+  return { error: null }
 }
