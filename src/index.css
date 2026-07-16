@@ -776,3 +776,115 @@ body{ font-size:var(--fs); }
   }
   .progfill{ transition: none; }
 }
+
+/* ============================================================
+   VISUAL REFRESH LAYER — clearly visible upgrade, same warm
+   palette. Pure CSS overrides (cascade wins), zero logic risk.
+   ============================================================ */
+
+/* -- frosted sticky bars -------------------------------------------------- */
+.topbar{
+  background:color-mix(in srgb, var(--card) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  border-bottom:1px solid color-mix(in srgb, var(--line) 80%, transparent);
+}
+.locbar{
+  background:color-mix(in srgb, var(--card) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(1.5);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+}
+.navlink{ border-radius:999px; padding:8px 16px; }
+.navlink.active{
+  background:var(--ember); color:#fff;
+  box-shadow:0 4px 12px color-mix(in srgb, var(--ember) 40%, transparent);
+}
+.brand{ display:flex; align-items:center; gap:8px; }
+.brand::before{
+  content:""; width:10px; height:10px; border-radius:3px; background:var(--ember);
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--ember) 18%, transparent);
+}
+
+/* -- cards get real depth + a light top edge ------------------------------ */
+.ticket, .dcard, .buycard, .prodsec, .hcard, .cart, .addtask, .hfilters,
+.catdrawer, .login-card, .addrow.card, .storegroup{
+  border-radius:16px;
+  border:1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent),
+    var(--shadow);
+}
+[data-theme="dark"] .ticket, [data-theme="dark"] .dcard, [data-theme="dark"] .buycard,
+[data-theme="dark"] .prodsec, [data-theme="dark"] .hcard, [data-theme="dark"] .cart,
+[data-theme="dark"] .addtask, [data-theme="dark"] .hfilters, [data-theme="dark"] .catdrawer,
+[data-theme="dark"] .login-card, [data-theme="dark"] .addrow.card, [data-theme="dark"] .storegroup{
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent), var(--shadow);
+}
+@media (hover:hover) and (pointer:fine){
+  .ticket:hover, .dcard:hover, .hcard:hover, .buycard:hover{
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 55%, transparent), var(--shadow-lg);
+    border-color:color-mix(in srgb, var(--ember) 25%, var(--line));
+  }
+}
+
+/* -- buttons with substance ------------------------------------------------ */
+button{ box-shadow:var(--shadow-sm); font-weight:500; }
+.ghost, .linkbtn, .favstar, .iconbtn, .themebtn, .cathdr, .navtoggle{ box-shadow:none; }
+.primary{
+  background:linear-gradient(180deg,
+    color-mix(in srgb, var(--ember) 88%, #fff) 0%, var(--ember) 100%);
+  border-color:color-mix(in srgb, var(--ember) 80%, #000);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 30%, transparent),
+    0 4px 14px color-mix(in srgb, var(--ember) 35%, transparent);
+}
+button:focus-visible{ outline:2px solid var(--ember); outline-offset:2px; }
+
+/* -- iOS-style segmented controls (visible change) ------------------------- */
+.seg{
+  background:var(--inset); border:1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius:12px; padding:3px; gap:2px;
+}
+.seg button{ border:0; background:transparent; box-shadow:none; border-radius:9px; font-weight:600; color:var(--muted); }
+.seg button.on{
+  background:var(--card); color:var(--ink);
+  box-shadow:var(--shadow-sm), 0 1px 4px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.seg button.on.make{ color:var(--make); background:var(--card); border-color:transparent; }
+.seg button.on.buy{ color:var(--buy); background:var(--card); border-color:transparent; }
+
+/* -- status pills with a colored dot --------------------------------------- */
+.tag, .pc, .statuschip{ display:inline-flex; align-items:center; gap:5px; line-height:1.4; }
+.tag::before{ content:""; width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.7; }
+.tag{ background:color-mix(in srgb, var(--line) 55%, transparent); }
+
+/* -- modern tables ---------------------------------------------------------- */
+.tbl th{
+  background:var(--raise); color:var(--muted);
+  font-family:inherit; font-size:12px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.06em;
+}
+.tbl tbody tr:nth-child(even) td{ background:color-mix(in srgb, var(--raise) 45%, transparent); }
+@media (hover:hover) and (pointer:fine){
+  .tbl tbody tr:hover td{ background:color-mix(in srgb, var(--ember) 6%, transparent); }
+}
+
+/* -- inputs ------------------------------------------------------------------ */
+input, select, textarea{ box-shadow:inset 0 1px 2px color-mix(in srgb, var(--ink) 4%, transparent); }
+input:focus, select:focus, textarea:focus{
+  border-color:var(--ember);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--ember) 16%, transparent);
+}
+.search{ border-radius:999px; padding:11px 18px; }
+
+/* -- friendlier empty states -------------------------------------------------- */
+.center.muted{
+  border:1.5px dashed color-mix(in srgb, var(--line) 130%, var(--muted));
+  border-radius:16px; background:color-mix(in srgb, var(--card) 60%, transparent);
+  max-width:520px; margin:24px auto; font-size:15px;
+}
+
+/* -- section headers get an ember tick ---------------------------------------- */
+h3{ display:flex; align-items:center; gap:8px; }
+h3::before{ content:""; width:4px; height:16px; border-radius:2px; background:var(--ember); }
+.login-card h3::before, .brand::after{ display:none; }
