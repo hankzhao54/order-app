@@ -151,7 +151,7 @@ export default function Dashboard() {
           <div className="storerow" key={i}>
             <span className="storename">{s.name}</span>
             <span className="muted small">{s.orders} order(s)</span>
-            <div className="progbar"><div className="progfill" style={{ width: s.total ? `${Math.round(s.done / s.total * 100)}%` : '0%' }} /></div>
+            <div className="progbar"><div className="progfill" style={{ transform: `scaleX(${s.total ? s.done / s.total : 0})` }} /></div>
             <span className="muted small">{s.done}/{s.total}</span>
           </div>
         ))}

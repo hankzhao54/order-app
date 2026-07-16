@@ -57,7 +57,7 @@ h3{font-family:'Bricolage Grotesque',sans-serif;font-weight:700;letter-spacing:.
 .main{max-width:1200px;margin:0 auto;padding:20px}
 
 /* buttons */
-button{cursor:pointer;border:1px solid var(--line);background:var(--card);padding:9px 14px;border-radius:8px;transition:.12s}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);padding:9px 14px;border-radius:8px}
 button:hover{border-color:#cbc6b8} button:disabled{opacity:.45;cursor:default}
 .primary{background:var(--ember);color:#fff;border-color:var(--ember);font-weight:600}
 .primary:hover{filter:brightness(1.08)}
@@ -168,7 +168,6 @@ button:hover{border-color:#cbc6b8} button:disabled{opacity:.45;cursor:default}
 .orow:last-child{border-bottom:0}
 .orow.in{background:var(--make-bg)}
 .favstar{border:0;background:transparent;font-size:20px;line-height:1;color:var(--star);padding:2px 4px;width:auto}
-.favstar:hover{transform:scale(1.15)}
 .oinfo{flex:1;cursor:pointer;min-width:0}
 .oname{font-weight:600}
 .osub{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -258,7 +257,6 @@ button:hover{border-color:#cbc6b8} button:disabled{opacity:.45;cursor:default}
 
 /* kitchen edit/delete + cancel + cancelled zone */
 .iconbtn{border:0;background:transparent;padding:3px 5px;font-size:15px;width:auto;line-height:1}
-.iconbtn:hover{transform:scale(1.15)}
 .ticketfoot{display:flex;gap:8px;margin-top:4px}
 .ticketfoot .primary{flex:1}
 .ghost.danger{color:var(--buy);border-color:var(--buy-line)}
@@ -349,8 +347,10 @@ body{ transition: background .25s ease, color .25s ease; -webkit-font-smoothing:
 body, .card, .ticket, .dcard, .buycard, .prodsec, .hcard, .catdrawer, .cart, .addtask, .addrow.card, .hfilters, .login-card, .tbl, .topbar, .locbar{ transition: background .25s ease, border-color .25s ease, box-shadow .2s ease; }
 
 /* unified controls */
-button{ border-radius:var(--radius-sm); transition: background .15s, border-color .15s, transform .06s, box-shadow .15s; }
-button:active{ transform: translateY(1px); }
+button{ border-radius:var(--radius-sm);
+  transition: background .15s ease, border-color .15s ease, color .15s ease,
+              box-shadow .15s ease, transform 160ms var(--ease-out); }
+button:active{ transform: scale(0.97); }
 input, select, textarea{ background:var(--field); color:var(--ink); border:1px solid var(--line); border-radius:var(--radius-sm); }
 input:focus, select:focus, textarea:focus{ outline:none; border-color:var(--navy); box-shadow:0 0 0 3px color-mix(in srgb, var(--navy) 18%, transparent); }
 ::placeholder{ color:var(--muted); opacity:.7 }
@@ -434,7 +434,7 @@ body{ font-size:var(--fs); }
 .storerow:last-child{border-bottom:0}
 .storename{font-weight:600;min-width:120px}
 .progbar{flex:1;height:8px;background:var(--neutral-bg);border-radius:99px;overflow:hidden}
-.progfill{height:100%;background:var(--make);border-radius:99px;transition:width .3s}
+.progfill{height:100%;width:100%;background:var(--make);border-radius:99px;transform-origin:left;transform:scaleX(0);transition:transform .3s var(--ease-out)}
 .dash-links{display:flex;flex-wrap:wrap;gap:10px}
 .dlink{padding:10px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);text-decoration:none;color:var(--ink);font-weight:600;box-shadow:var(--shadow-sm)}
 .dlink:hover{border-color:var(--navy)}
@@ -719,4 +719,60 @@ body{ font-size:var(--fs); }
   .label-page{padding:0}
   .label{border:none;margin:0}
   @page{margin:6mm}
+}
+
+/* ============================================================
+   MOTION LAYER — based on Emil Kowalski's design-engineering
+   rules (github.com/emilkowalski/skills):
+   - animate only transform/opacity, never `transition: all`
+   - enter animations use a strong ease-out, stay under 300ms
+   - frequency decides intensity: daily-repeated UI gets subtle
+     fades only; kitchen/keyboard-frequency actions get none
+   - hover transforms gated behind (hover:hover) and (pointer:fine)
+   ============================================================ */
+:root{
+  /* built-in CSS easings are too weak — use strong custom curves */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* pressable icons: smooth scale, only on real pointers */
+.favstar, .iconbtn, .themebtn{ transition: transform 150ms var(--ease-out), color .15s ease, border-color .15s ease; }
+@media (hover:hover) and (pointer:fine){
+  .favstar:hover, .iconbtn:hover{ transform: scale(1.12); }
+}
+.favstar:active, .iconbtn:active{ transform: scale(0.9); }
+
+/* conditionally-mounted panels fade+drop in (never appear from nothing) */
+.notice, .inline-edit, .stockhint, .partialbox, .amend-banner,
+.eventfields, .cutoff-banner, .error{
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
+  @starting-style{ opacity: 0; transform: translateY(-4px); }
+}
+
+/* high-frequency additions (cart rows, category drawers): opacity only,
+   fast — seen dozens of times a day, so no movement, no flourish */
+.cartrow, .catitems, .buyrow, .tline{
+  transition: opacity 140ms var(--ease-out);
+  @starting-style{ opacity: 0; }
+}
+
+/* status chips settle in place when a line is handled */
+.statuschip{
+  transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+  @starting-style{ opacity: 0; transform: scale(0.95); }
+}
+
+/* card hover lift stays shadow-only (no movement) — already themed above */
+
+/* reduced motion: keep comprehension-aiding fades, drop movement/scale */
+@media (prefers-reduced-motion: reduce){
+  button:active, .favstar:active, .iconbtn:active{ transform: none; }
+  .favstar:hover, .iconbtn:hover{ transform: none; }
+  .notice, .inline-edit, .stockhint, .partialbox, .amend-banner,
+  .eventfields, .cutoff-banner, .error, .statuschip{
+    transition: opacity 150ms ease;
+    @starting-style{ transform: none; }
+  }
+  .progfill{ transition: none; }
 }
