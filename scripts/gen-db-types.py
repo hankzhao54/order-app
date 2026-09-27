@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""Generate src/lib/database.types.ts for the `ordering` schema from a Postgres
+database that has supabase/schema.sql + supabase/migrations applied.
+
+Usage:  python3 scripts/gen-db-types.py "postgresql://postgres@localhost/ordtest" > src/lib/database.types.ts
+
+(Against the live project you can instead run:
+   npx supabase gen types typescript --project-id fuqkjwfbwtnkukxoytfj --schema ordering
+ which produces the same shape.)
+"""
+import json, subprocess, sys
+
+DSN = sys.argv[1] if len(sys.argv) > 1 else "postgresql:///ordtest"
+SCHEMA = "ordering"
+
+
+def q(sql):
+    out = subprocess.check_output(["psql", DSN, "-At", "-c", f"select coalesce(json_agg(_row), '[]') from ({sql}) _row"])
+    return json.loads(out)
+
+
+PG_TS = {
+    "uuid": "string", "text": "string", "character varying": "string", "date": "string",
+    "timestamp with time zone": "string", "timestamp without time zone": "string",
+    "numeric": "number", "integer": "number", "bigint": "number", "smallint": "number",
+    "double precision": "number", "real": "number", "boolean": "boolean",
+    "jsonb": "Json", "json": "Json", "void": "undefined",
+}
+
+enums = {}
+for r in q(f"""select t.typname as name, array_agg(e.enumlabel order by e.enumsortorder) as vals
+               from pg_type t join pg_enum e on e.enumtypid = t.oid
+               join pg_namespace n on n.oid = t.typnamespace where n.nspname = '{SCHEMA}' group by t.typname order by 1"""):
+    enums[r["name"]] = r["vals"]
+
+
+def ts_type(data_type, udt_name):
+    if data_type == "USER-DEFINED":
+        return f'Database["{SCHEMA}"]["Enums"]["{udt_name}"]' if udt_name in enums else "unknown"
+    if data_type == "ARRAY":
+        base = udt_name.lstrip("_")
+        return f"{PG_TS.get(base, 'unknown')}[]"
+    return PG_TS.get(data_type, "unknown")
+
+
+cols = q(f"""select table_name, column_name, data_type, udt_name, is_nullable, column_default, is_identity, is_generated
+             from information_schema.columns where table_schema = '{SCHEMA}' order by table_name, ordinal_position""")
+tables = {}
+for c in cols:
+    tables.setdefault(c["table_name"], []).append(c)
+
+fks = q(f"""select con.conname as name, rel.relname as tbl, frel.relname as ftbl, fns.nspname as fschema,
+                   (select array_agg(a.attname order by k.ord) from unnest(con.conkey) with ordinality k(n, ord)
+                      join pg_attribute a on a.attrelid = con.conrelid and a.attnum = k.n) as cols,
+                   (select array_agg(a.attname order by k.ord) from unnest(con.confkey) with ordinality k(n, ord)
+                      join pg_attribute a on a.attrelid = con.confrelid and a.attnum = k.n) as fcols
+            from pg_constraint con join pg_class rel on rel.oid = con.conrelid
+            join pg_namespace ns on ns.oid = rel.relnamespace
+            join pg_class frel on frel.oid = con.confrelid join pg_namespace fns on fns.oid = frel.relnamespace
+            where con.contype = 'f' and ns.nspname = '{SCHEMA}' order by 1""")
+uniques = q(f"""select rel.relname as tbl, (select array_agg(a.attname) from unnest(con.conkey) k(n)
+                   join pg_attribute a on a.attrelid = con.conrelid and a.attnum = k.n) as cols
+                from pg_constraint con join pg_class rel on rel.oid = con.conrelid
+                join pg_namespace ns on ns.oid = rel.relnamespace
+                where con.contype in ('p','u') and ns.nspname = '{SCHEMA}'""")
+uniq_sets = {(u["tbl"], tuple(sorted(u["cols"]))) for u in uniques}
+
+funcs = q(f"""select p.proname as name, pg_get_function_identity_arguments(p.oid) as ident,
+                     p.proargnames as argnames, p.proargmodes as modes,
+                     (select array_agg(format_type(t, null) order by i) from unnest(p.proargtypes) with ordinality a(t, i)) as argtypes,
+                     p.pronargdefaults as ndefaults, format_type(p.prorettype, null) as ret, p.proretset as retset,
+                     p.prorettype::regtype::text as rettype
+              from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+              where n.nspname = '{SCHEMA}' and p.prokind = 'f'
+                and format_type(p.prorettype, null) <> 'trigger'
+              order by 1""")
+
+
+def fmt_type(t):
+    t = t.replace("ordering.", "")
+    if t.endswith("[]"):
+        return fmt_type(t[:-2]) + "[]"
+    if t in enums:
+        return f'Database["{SCHEMA}"]["Enums"]["{t}"]'
+    return PG_TS.get(t, "unknown")
+
+
+def table_ret_cols(fname):
+    rows = q(f"""select unnest(p.proargnames) as n, unnest(p.proargmodes) as m,
+                        unnest((select array_agg(format_type(t, null)) from unnest(p.proallargtypes) t)) as t
+                 from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+                 where ns.nspname = '{SCHEMA}' and p.proname = '{fname}'""")
+    return [(r["n"], r["t"]) for r in rows if r["m"] == "t"]
+
+
+o = []
+w = o.append
+w("// AUTO-GENERATED by scripts/gen-db-types.py — do not edit by hand.")
+w("export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]\n")
+w("export type Database = {")
+w(f"  {SCHEMA}: {{")
+w("    Tables: {")
+for tname in sorted(tables):
+    tcols = tables[tname]
+    w(f"      {tname}: {{")
+    for section in ("Row", "Insert", "Update"):
+        w(f"        {section}: {{")
+        for c in tcols:
+            t = ts_type(c["data_type"], c["udt_name"])
+            nullable = c["is_nullable"] == "YES"
+            has_default = c["column_default"] is not None or c["is_identity"] == "YES"
+            typ = f"{t} | null" if nullable else t
+            if section == "Row":
+                w(f"          {c['column_name']}: {typ}")
+            elif section == "Insert":
+                if c["is_identity"] == "YES":
+                    w(f"          {c['column_name']}?: never")
+                else:
+                    opt = "?" if (nullable or has_default) else ""
+                    w(f"          {c['column_name']}{opt}: {typ}")
+            else:
+                if c["is_identity"] == "YES":
+                    w(f"          {c['column_name']}?: never")
+                else:
+                    w(f"          {c['column_name']}?: {typ}")
+        w("        }")
+    w("        Relationships: [")
+    for fk in fks:
+        if fk["tbl"] != tname or fk["fschema"] != SCHEMA:
+            continue
+        one = (fk["tbl"], tuple(sorted(fk["cols"]))) in uniq_sets
+        w("          {")
+        w(f'            foreignKeyName: "{fk["name"]}"')
+        w(f"            columns: {json.dumps(fk['cols'])}")
+        w(f"            isOneToOne: {'true' if one else 'false'}")
+        w(f'            referencedRelation: "{fk["ftbl"]}"')
+        w(f"            referencedColumns: {json.dumps(fk['fcols'])}")
+        w("          },")
+    w("        ]")
+    w("      }")
+w("    }")
+w("    Views: { [_ in never]: never }")
+w("    Functions: {")
+for f in funcs:
+    names = f["argnames"] or []
+    modes = f["modes"]
+    types = f["argtypes"] or []
+    in_names = [n for i, n in enumerate(names) if not modes or modes[i] in ("i", "b")] if names else []
+    nargs = len(types)
+    ndef = f["ndefaults"] or 0
+    w(f"      {f['name']}: {{")
+    if nargs == 0:
+        w("        Args: never")
+    else:
+        w("        Args: {")
+        for i, t in enumerate(types):
+            n = in_names[i] if i < len(in_names) else f"arg{i}"
+            opt = "?" if i >= nargs - ndef else ""
+            w(f"          {n}{opt}: {fmt_type(t)}")
+        w("        }")
+    if f["ret"] == "record" and f["retset"]:
+        cols_ = table_ret_cols(f["name"])
+        inner = "; ".join(f"{n}: {fmt_type(t)}" for n, t in cols_)
+        w(f"        Returns: {{ {inner} }}[]")
+    else:
+        rt = fmt_type(f["ret"])
+        w(f"        Returns: {rt}{'[]' if f['retset'] else ''}")
+    w("      }")
+w("    }")
+w("    Enums: {")
+for n, vals in enums.items():
+    w(f"      {n}: {' | '.join(json.dumps(v) for v in vals)}")
+w("    }")
+w("    CompositeTypes: { [_ in never]: never }")
+w("  }")
+w("}\n")
+w(f'type S = Database["{SCHEMA}"]')
+w('export type Tables<T extends keyof S["Tables"]> = S["Tables"][T]["Row"]')
+w('export type TablesInsert<T extends keyof S["Tables"]> = S["Tables"][T]["Insert"]')
+w('export type TablesUpdate<T extends keyof S["Tables"]> = S["Tables"][T]["Update"]')
+w('export type Enums<T extends keyof S["Enums"]> = S["Enums"][T]')
+print("\n".join(o))

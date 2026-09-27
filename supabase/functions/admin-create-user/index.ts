@@ -7,7 +7,7 @@ const cors = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
-const VALID_ROLES = ['restaurant_orderer', 'store_manager', 'kitchen_manager', 'admin', 'driver']
+const VALID_ROLES = ['restaurant_orderer', 'store_manager', 'kitchen_manager', 'admin', 'driver', 'bar_staff']
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })

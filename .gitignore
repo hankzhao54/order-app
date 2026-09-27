@@ -1,10 +1,7 @@
 node_modules
 dist
-.env
 .env.local
+.env*.local
+*.log
 .DS_Store
-.claude
-
-# Supabase CLI local cache
-supabase/.temp
-supabase/.branches
+vite.e2e.local.ts
