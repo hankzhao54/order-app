@@ -17,6 +17,14 @@ export default defineConfig({
         skipWaiting: true,
         // the bundled user guides are standalone documents, not SPA routes
         navigateFallbackDenylist: [/^\/user-guide(-hu)?\.html$/],
+        runtimeCaching: [
+          {
+            // recipe photos rarely change — keep them for offline use in the kitchen
+            urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/v1\/object\/public\/.*/i,
+            handler: 'CacheFirst',
+            options: { cacheName: 'recipe-images', expiration: { maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 30 }, cacheableResponse: { statuses: [0, 200] } },
+          },
+        ],
       },
       manifest: {
         name: 'Order · 订货',

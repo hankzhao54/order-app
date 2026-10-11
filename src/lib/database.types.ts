@@ -77,6 +77,7 @@ export type Database = {
           shelf_life_days: number | null
           reorder_level: number | null
           vacuum_level: string | null
+          recipe_ref: string | null
         }
         Insert: {
           id?: string
@@ -100,6 +101,7 @@ export type Database = {
           shelf_life_days?: number | null
           reorder_level?: number | null
           vacuum_level?: string | null
+          recipe_ref?: string | null
         }
         Update: {
           id?: string
@@ -123,6 +125,7 @@ export type Database = {
           shelf_life_days?: number | null
           reorder_level?: number | null
           vacuum_level?: string | null
+          recipe_ref?: string | null
         }
         Relationships: [
           {
@@ -130,6 +133,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "catalog_items_recipe_ref_fkey"
+            columns: ["recipe_ref"]
+            isOneToOne: false
+            referencedRelation: "recipes"
             referencedColumns: ["id"]
           },
         ]
@@ -666,6 +676,161 @@ export type Database = {
           },
         ]
       }
+      recipe_categories: {
+        Row: {
+          id: number
+          name_en: string
+          name_hu: string
+          color: string
+          sort_order: number
+          created_at: string | null
+        }
+        Insert: {
+          id: number
+          name_en: string
+          name_hu: string
+          color?: string
+          sort_order?: number
+          created_at?: string | null
+        }
+        Update: {
+          id?: number
+          name_en?: string
+          name_hu?: string
+          color?: string
+          sort_order?: number
+          created_at?: string | null
+        }
+        Relationships: [
+        ]
+      }
+      recipe_favorites: {
+        Row: {
+          user_id: string
+          recipe_id: string
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          recipe_id: string
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          recipe_id?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipe_favorites_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "recipes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recipe_versions: {
+        Row: {
+          id: number
+          recipe_id: string
+          snapshot: Json
+          edited_by: string | null
+          edited_by_name: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: number
+          recipe_id: string
+          snapshot: Json
+          edited_by?: string | null
+          edited_by_name?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: number
+          recipe_id?: string
+          snapshot?: Json
+          edited_by?: string | null
+          edited_by_name?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+        ]
+      }
+      recipes: {
+        Row: {
+          id: string
+          hu_name: string
+          en_name: string
+          category: number
+          section: number | null
+          serves: number | null
+          prep_time: number | null
+          cook_time: number | null
+          author_id: string | null
+          author_name: string | null
+          cover_image: string | null
+          ingredients: Json
+          steps: Json
+          is_seed: boolean | null
+          created_at: string | null
+          updated_at: string | null
+          pack_spec: string | null
+          shelf_life: string | null
+          vacuum_level: string | null
+          status: string
+          allergens: string[] | null
+        }
+        Insert: {
+          id: string
+          hu_name: string
+          en_name: string
+          category?: number
+          section?: number | null
+          serves?: number | null
+          prep_time?: number | null
+          cook_time?: number | null
+          author_id?: string | null
+          author_name?: string | null
+          cover_image?: string | null
+          ingredients?: Json
+          steps?: Json
+          is_seed?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+          pack_spec?: string | null
+          shelf_life?: string | null
+          vacuum_level?: string | null
+          status?: string
+          allergens?: string[] | null
+        }
+        Update: {
+          id?: string
+          hu_name?: string
+          en_name?: string
+          category?: number
+          section?: number | null
+          serves?: number | null
+          prep_time?: number | null
+          cook_time?: number | null
+          author_id?: string | null
+          author_name?: string | null
+          cover_image?: string | null
+          ingredients?: Json
+          steps?: Json
+          is_seed?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+          pack_spec?: string | null
+          shelf_life?: string | null
+          vacuum_level?: string | null
+          status?: string
+          allergens?: string[] | null
+        }
+        Relationships: [
+        ]
+      }
       stock_batches: {
         Row: {
           id: string
@@ -998,6 +1163,14 @@ export type Database = {
         }
         Returns: number
       }
+      can_edit_recipes: {
+        Args: never
+        Returns: boolean
+      }
+      can_manage_recipes: {
+        Args: never
+        Returns: boolean
+      }
       central_location: {
         Args: never
         Returns: string
@@ -1021,6 +1194,12 @@ export type Database = {
       delete_procurement_task: {
         Args: {
           p_task: string
+        }
+        Returns: Json
+      }
+      delete_recipe: {
+        Args: {
+          p_id: string
         }
         Returns: Json
       }
@@ -1060,6 +1239,13 @@ export type Database = {
         }
         Returns: Json
       }
+      link_recipe: {
+        Args: {
+          p_item: string
+          p_recipe: string
+        }
+        Returns: undefined
+      }
       log_audit: {
         Args: {
           p_action: string
@@ -1067,6 +1253,18 @@ export type Database = {
           p_detail?: Json
         }
         Returns: undefined
+      }
+      map_recipe_action: {
+        Args: {
+          p: string
+        }
+        Returns: string
+      }
+      map_recipe_role: {
+        Args: {
+          p: string
+        }
+        Returns: Database["ordering"]["Enums"]["user_role"]
       }
       mark_item_bought: {
         Args: {
@@ -1080,6 +1278,10 @@ export type Database = {
           p_reason?: string
         }
         Returns: Json
+      }
+      my_display_name: {
+        Args: never
+        Returns: string
       }
       my_location: {
         Args: never
@@ -1100,6 +1302,19 @@ export type Database = {
           p_return: string
         }
         Returns: undefined
+      }
+      restore_recipe_version: {
+        Args: {
+          p_version: number
+        }
+        Returns: Json
+      }
+      save_recipe: {
+        Args: {
+          p: Json
+          p_action?: string
+        }
+        Returns: Json
       }
       scrap_batch: {
         Args: {
@@ -1212,7 +1427,7 @@ export type Database = {
       order_status: "draft" | "submitted" | "in_progress" | "completed" | "cancelled" | "archived"
       order_type: "weekly" | "urgent" | "event" | "procurement"
       procurement_status: "pending" | "bought" | "unavailable"
-      user_role: "restaurant_orderer" | "kitchen_manager" | "admin" | "driver" | "store_manager" | "bar_staff"
+      user_role: "restaurant_orderer" | "kitchen_manager" | "admin" | "driver" | "store_manager" | "bar_staff" | "chef" | "kitchen_staff"
     }
     CompositeTypes: { [_ in never]: never }
   }

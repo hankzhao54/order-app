@@ -6,20 +6,24 @@ export type Capability =
   | 'order' | 'order.anyLocation' | 'buy.request' | 'buy.work' | 'kitchen' | 'labels'
   | 'dispatch' | 'dispatch.bulk' | 'inventory' | 'inventory.anyLocation' | 'inventory.overview'
   | 'receiving' | 'reports' | 'history' | 'history.all' | 'catalog' | 'catalog.prices' | 'admin'
+  | 'recipes' | 'recipes.edit' | 'recipes.manage'
 
 const CAPS: Record<Role, Capability[]> = {
-  restaurant_orderer: ['order', 'buy.request', 'history', 'receiving'],
-  store_manager: ['order', 'buy.request', 'history', 'inventory', 'receiving', 'catalog'],
-  bar_staff: ['inventory'],
+  restaurant_orderer: ['order', 'buy.request', 'history', 'receiving', 'recipes'],
+  store_manager: ['order', 'buy.request', 'history', 'inventory', 'receiving', 'catalog', 'recipes'],
+  bar_staff: ['inventory', 'recipes'],
+  chef: ['recipes', 'recipes.edit'],
+  kitchen_staff: ['recipes'],
   driver: ['buy.work', 'dispatch', 'history', 'history.all'],
   kitchen_manager: [
     'order', 'order.anyLocation', 'buy.request', 'buy.work', 'kitchen', 'labels', 'dispatch', 'dispatch.bulk',
     'inventory', 'inventory.anyLocation', 'inventory.overview', 'receiving', 'reports', 'history', 'history.all',
+    'recipes', 'recipes.edit', 'recipes.manage',
   ],
   admin: [
     'order', 'order.anyLocation', 'buy.request', 'buy.work', 'kitchen', 'labels', 'dispatch', 'dispatch.bulk',
     'inventory', 'inventory.anyLocation', 'inventory.overview', 'receiving', 'reports', 'history', 'history.all',
-    'catalog', 'catalog.prices', 'admin',
+    'catalog', 'catalog.prices', 'admin', 'recipes', 'recipes.edit', 'recipes.manage',
   ],
 }
 
@@ -43,6 +47,7 @@ export const NAV: NavItem[] = [
   { to: '/buy', key: 'nav.buy', cap: 'buy.work', icon: 'buy', primary: true },
   { to: '/inventory', key: 'nav.inventory', cap: 'inventory', icon: 'inventory', primary: true },
   { to: '/receiving', key: 'nav.receiving', cap: 'receiving', icon: 'receiving', primary: true },
+  { to: '/recipes', key: 'nav.recipes', cap: 'recipes', icon: 'recipes', primary: true },
   { to: '/labels', key: 'nav.labels', cap: 'labels', icon: 'labels' },
   { to: '/history', key: 'nav.history', cap: 'history', icon: 'history' },
   { to: '/reports', key: 'nav.reports', cap: 'reports', icon: 'reports' },
@@ -69,11 +74,13 @@ export function homeFor(role: Role | null | undefined): string {
     case 'kitchen_manager': return '/kitchen'
     case 'driver': return '/dispatch'
     case 'bar_staff': return '/inventory'
+    case 'chef':
+    case 'kitchen_staff': return '/recipes'
     case 'restaurant_orderer':
     case 'store_manager': return '/order'
     default: return '/no-role'
   }
 }
 
-export const ROLES: Role[] = ['restaurant_orderer', 'store_manager', 'bar_staff', 'kitchen_manager', 'driver', 'admin']
+export const ROLES: Role[] = ['restaurant_orderer', 'store_manager', 'bar_staff', 'kitchen_manager', 'chef', 'kitchen_staff', 'driver', 'admin']
 export const STORE_BOUND_ROLES: Role[] = ['restaurant_orderer', 'store_manager', 'bar_staff']

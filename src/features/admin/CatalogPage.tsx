@@ -11,6 +11,8 @@ import { useFeedback } from '@/ui/feedback'
 import { Badge, Button, Card, Empty, Field, Input, PageHeader, Segmented, Select, Skeleton } from '@/ui/primitives'
 import { Sheet } from '@/ui/Sheet'
 import { BlurInput } from '@/ui/BlurInput'
+import { useRecipes } from '@/features/recipes/hooks'
+import { recipeName } from '@/lib/recipes'
 import type { CatalogItem, Category } from '@/lib/types'
 
 const ADMIN_KEYS = { items: [...QK.catalog, 'all'], cats: [...QK.categories, 'all'] }
@@ -88,13 +90,15 @@ type Draft = {
   name_en: string; name_hu: string; category_id: string; default_fulfillment: '' | 'make' | 'purchase'; order_unit: string
   stock_unit: string; unit_weight: string; weight_unit: string; batch_yield_qty: string; batch_yield_unit: string
   shelf_life_days: string; storage_location: string; reorder_level: string; vacuum_level: string; is_active: boolean
+  recipe_ref: string
 }
 
 const numOrNull = (s: string) => (s.trim() === '' ? null : Number(s.replace(',', '.')))
 const strOrNull = (s: string) => (s.trim() === '' ? null : s.trim())
 
 function ItemSheet({ item, cats, onClose }: { item: CatalogItem | null; cats: Category[]; onClose: () => void }) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
+  const recipes = useRecipes()
   const { can } = useAuth()
   const fb = useFeedback()
   const qc = useQueryClient()
@@ -107,6 +111,7 @@ function ItemSheet({ item, cats, onClose }: { item: CatalogItem | null; cats: Ca
     shelf_life_days: item?.shelf_life_days != null ? String(item.shelf_life_days) : '', storage_location: item?.storage_location ?? '',
     reorder_level: item?.reorder_level != null ? String(item.reorder_level) : '', vacuum_level: item?.vacuum_level ?? '',
     is_active: item?.is_active ?? true,
+    recipe_ref: item?.recipe_ref ?? '',
   }))
   const set = (patch: Partial<Draft>) => setD(x => ({ ...x, ...patch }))
 
@@ -122,8 +127,9 @@ function ItemSheet({ item, cats, onClose }: { item: CatalogItem | null; cats: Ca
     }
     setBusy(true)
     try {
+      const savedId = item ? item.id : await api.createCatalogItem(row)
       if (item) await api.updateCatalogItem(item.id, row)
-      else await api.createCatalogItem(row)
+      if ((d.recipe_ref || null) !== (item?.recipe_ref ?? null)) await api.linkRecipe(savedId, d.recipe_ref || null)
       fb.ok(t('common.saved'))
       qc.invalidateQueries({ queryKey: QK.catalog })
       onClose()
@@ -142,19 +148,19 @@ function ItemSheet({ item, cats, onClose }: { item: CatalogItem | null; cats: Ca
             {cats.map(c => <option key={c.id} value={c.id}>{c.name_en}</option>)}
           </Select>
         </Field>
-        <Field label={t('cat.makeBuy')} hint={t('cat.makeBuyHint')}>
+        <Field group label={t('cat.makeBuy')} hint={t('cat.makeBuyHint')}>
           <Segmented size="sm" value={d.default_fulfillment || 'none'} onChange={v => set({ default_fulfillment: v === 'none' ? '' : v as 'make' | 'purchase' })}
             options={[{ value: 'make', label: t('cat.make') }, { value: 'purchase', label: t('cat.buy') }, { value: 'none', label: '—' }]} />
         </Field>
         <Field label={t('cat.orderUnit')} hint={t('cat.orderUnitHint')}><Input value={d.order_unit} onChange={e => set({ order_unit: e.target.value })} /></Field>
         <Field label={t('cat.stockUnit')}><Input value={d.stock_unit} onChange={e => set({ stock_unit: e.target.value })} /></Field>
-        <Field label={t('cat.perUnit')}>
+        <Field group label={t('cat.perUnit')}>
           <div className="row gap-1">
             <Input inputMode="decimal" value={d.unit_weight} onChange={e => set({ unit_weight: e.target.value })} />
             <Select value={d.weight_unit} onChange={e => set({ weight_unit: e.target.value })}><option value="g">g</option><option value="kg">kg</option><option value="pcs">pcs</option></Select>
           </div>
         </Field>
-        <Field label={t('cat.batchYield')}>
+        <Field group label={t('cat.batchYield')}>
           <div className="row gap-1">
             <Input inputMode="decimal" value={d.batch_yield_qty} onChange={e => set({ batch_yield_qty: e.target.value })} />
             <Input placeholder={t('common.unit')} value={d.batch_yield_unit} onChange={e => set({ batch_yield_unit: e.target.value })} />
@@ -164,6 +170,14 @@ function ItemSheet({ item, cats, onClose }: { item: CatalogItem | null; cats: Ca
         <Field label={t('cat.storage')}><Input value={d.storage_location} onChange={e => set({ storage_location: e.target.value })} /></Field>
         <Field label={t('cat.reorder')} hint={t('cat.reorderHint')}><Input inputMode="decimal" value={d.reorder_level} onChange={e => set({ reorder_level: e.target.value })} /></Field>
         <Field label={t('cat.vacuum')}><Input placeholder="P0–P7" value={d.vacuum_level} onChange={e => set({ vacuum_level: e.target.value })} /></Field>
+        <Field label={t('rec.linkedRecipe')} hint={t('rec.linkedRecipeHint')} className="span-2">
+          <Select value={d.recipe_ref} onChange={e => set({ recipe_ref: e.target.value })}>
+            <option value="">—</option>
+            {(recipes.data ?? []).slice().sort((a, b) => recipeName(a, lang).localeCompare(recipeName(b, lang))).map(r => (
+              <option key={r.id} value={r.id}>{recipeName(r, lang)}</option>
+            ))}
+          </Select>
+        </Field>
         <label className="check span-2"><input type="checkbox" checked={d.is_active} onChange={e => set({ is_active: e.target.checked })} /> {t('cat.activeHint')}</label>
       </div>
       {item && can('catalog.prices') && <Prices item={item} />}

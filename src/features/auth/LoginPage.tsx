@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate } from 'react-router'
+import { Navigate, useLocation } from 'react-router'
 import { Eye, EyeOff } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
@@ -9,6 +9,7 @@ import { Button, Input } from '@/ui/primitives'
 
 export function LoginPage() {
   const { ready, userId } = useAuth()
+  const from = (useLocation().state as { from?: string } | null)?.from
   const { t, lang, setLang } = useI18n()
   const [name, setName] = useState('')
   const [pw, setPw] = useState('')
@@ -16,7 +17,7 @@ export function LoginPage() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
-  if (ready && userId) return <Navigate to="/" replace />
+  if (ready && userId) return <Navigate to={from && from.startsWith('/') ? from : '/'} replace />
 
   async function submit(e: FormEvent) {
     e.preventDefault()

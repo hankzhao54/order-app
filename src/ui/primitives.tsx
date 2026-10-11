@@ -98,7 +98,21 @@ export function Select({ className = '', children, ...rest }: SelectHTMLAttribut
   return <select className={`input select ${className}`} {...rest}>{children}</select>
 }
 
-export function Field({ label, hint, children, className = '' }: { label: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) {
+/**
+ * Labelled form field. Use `group` when the content is more than one control
+ * (several inputs, chips, buttons): a <label> would otherwise attach its text
+ * to the first control inside it and swallow clicks.
+ */
+export function Field({ label, hint, children, className = '', group }: { label: ReactNode; hint?: ReactNode; children: ReactNode; className?: string; group?: boolean }) {
+  if (group) {
+    return (
+      <div className={`field ${className}`} role="group" aria-label={typeof label === 'string' ? label : undefined}>
+        <span className="field-label">{label}</span>
+        {children}
+        {hint && <span className="field-hint">{hint}</span>}
+      </div>
+    )
+  }
   return (
     <label className={`field ${className}`}>
       <span className="field-label">{label}</span>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Check, Package, Pencil, RotateCcw, ShoppingCart, Trash2, X, Minus } from 'lucide-react'
+import { Link } from 'react-router'
+import { BookMarked, Check, Package, Pencil, RotateCcw, ShoppingCart, Trash2, X, Minus } from 'lucide-react'
 import * as api from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import type { MessageKey } from '@/lib/i18n/en'
@@ -11,8 +12,8 @@ import { Badge, Button, Card, Stepper } from '@/ui/primitives'
 import { Sheet } from '@/ui/Sheet'
 import type { OrderLine, OrderWithLines } from '@/lib/types'
 
-export function OrderTicket({ order: o, stock, onEditing }: {
-  order: OrderWithLines; stock: Record<string, number>; onEditing: (v: boolean) => void
+export function OrderTicket({ order: o, stock, recipeFor = {}, onEditing }: {
+  order: OrderWithLines; stock: Record<string, number>; recipeFor?: Record<string, string>; onEditing: (v: boolean) => void
 }) {
   const { t } = useI18n()
   const fb = useFeedback()
@@ -86,6 +87,9 @@ export function OrderTicket({ order: o, stock, onEditing }: {
               <div className="kline-top">
                 <span className="kline-qty">{qtyUnit(line.quantity, line.unit_snapshot)}</span>
                 <span className="kline-name">{line.item_name_snapshot}</span>
+                {line.catalog_item_id && recipeFor[line.catalog_item_id] && (
+                  <Link className="kline-recipe" to={`/recipes/${recipeFor[line.catalog_item_id]}`} aria-label={t('rec.open')} title={t('rec.open')}><BookMarked size={15} /></Link>
+                )}
                 {isBuy && <ShoppingCart size={14} className="text-buy" aria-label={t('kitchen.buyItem')} />}
                 {!line.catalog_item_id && <Badge>{t('kitchen.custom')}</Badge>}
                 {(pending || line.dispatch_status === 'unavailable') && (

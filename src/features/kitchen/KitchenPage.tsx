@@ -5,6 +5,7 @@ import * as api from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import type { MessageKey } from '@/lib/i18n/en'
 import { useLiveQueries } from '@/lib/query'
+import { useCatalog } from '@/lib/refdata'
 import { QK, useAction } from '@/lib/useAction'
 import { thisMonday } from '@/lib/dates'
 import { groupOrders, type Bucket } from '@/lib/kitchen'
@@ -42,6 +43,8 @@ export default function KitchenPage() {
     queryFn: () => api.listOrders({ statuses: ['cancelled'], excludeTypes: ['procurement'], limit: 40 }),
   })
   const stock = useQuery({ queryKey: QK.central, queryFn: api.centralAvailable })
+  const catalog = useCatalog()
+  const recipeFor = useMemo(() => Object.fromEntries((catalog.data ?? []).filter(c => c.recipe_ref).map(c => [c.id, c.recipe_ref!])), [catalog.data])
   useLiveQueries(['orders', 'order_items', 'stock_batches'], [QK.orders, QK.central], editing)
   const { run, isBusy } = useAction([QK.orders, QK.central])
 
@@ -107,7 +110,7 @@ export default function KitchenPage() {
                 {isOpen && (
                   <div className={`ticket-grid${multi ? ' grouped' : ''}`}>
                     {g.orders.map(o => (
-                      <OrderTicket key={o.id} order={o} stock={stock.data ?? {}} onEditing={setEditing} />
+                      <OrderTicket key={o.id} order={o} stock={stock.data ?? {}} recipeFor={recipeFor} onEditing={setEditing} />
                     ))}
                   </div>
                 )}

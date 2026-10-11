@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { Navigate, Route, Routes } from 'react-router'
+import { Navigate, Route, Routes, useLocation } from 'react-router'
 import { useAuth } from './lib/auth'
 import { homeFor, type Capability } from './lib/permissions'
 import { isConfigured } from './lib/supabase'
@@ -27,6 +27,11 @@ const LocationsPage = lazy(() => import('./features/admin/LocationsPage'))
 const UsersPage = lazy(() => import('./features/admin/UsersPage'))
 const AuditPage = lazy(() => import('./features/admin/AuditPage'))
 const SettingsPage = lazy(() => import('./features/admin/SettingsPage'))
+const RecipesPage = lazy(() => import('./features/recipes/RecipesPage'))
+const RecipeDetailPage = lazy(() => import('./features/recipes/RecipeDetailPage'))
+const RecipeEditPage = lazy(() => import('./features/recipes/RecipeEditPage'))
+const PrepListPage = lazy(() => import('./features/recipes/PrepListPage'))
+const RecipeAdminPage = lazy(() => import('./features/recipes/RecipeAdminPage'))
 
 function Loading() {
   return <div className="page"><Skeleton rows={6} /></div>
@@ -34,8 +39,9 @@ function Loading() {
 
 function Guard({ cap, children, bare }: { cap?: Capability | Capability[]; children: ReactNode; bare?: boolean }) {
   const { ready, userId, role, can } = useAuth()
+  const location = useLocation()
   if (!ready) return <Loading />
-  if (!userId) return <Navigate to="/login" replace />
+  if (!userId) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
   if (!role) return <Navigate to="/no-role" replace />
   if (cap && !(Array.isArray(cap) ? cap.some(c => can(c)) : can(cap))) return <Navigate to="/" replace />
   const content = <Suspense fallback={<Loading />}>{children}</Suspense>
@@ -87,6 +93,12 @@ export function App() {
       <Route path="/admin/users" element={<Guard cap="admin"><UsersPage /></Guard>} />
       <Route path="/admin/audit" element={<Guard cap="admin"><AuditPage /></Guard>} />
       <Route path="/admin/settings" element={<Guard cap="admin"><SettingsPage /></Guard>} />
+      <Route path="/recipes" element={<Guard cap="recipes"><RecipesPage /></Guard>} />
+      <Route path="/recipes/new" element={<Guard cap="recipes.edit"><RecipeEditPage /></Guard>} />
+      <Route path="/recipes/prep" element={<Guard cap="recipes"><PrepListPage /></Guard>} />
+      <Route path="/recipes/admin" element={<Guard cap="recipes.manage"><RecipeAdminPage /></Guard>} />
+      <Route path="/recipes/:id" element={<Guard cap="recipes"><RecipeDetailPage /></Guard>} />
+      <Route path="/recipes/:id/edit" element={<Guard cap="recipes.edit"><RecipeEditPage /></Guard>} />
       {/* v1 URLs keep working */}
       <Route path="/procurement" element={<Navigate to="/buy" replace />} />
       <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />

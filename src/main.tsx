@@ -12,6 +12,10 @@ import './styles/base.css'
 import './styles/components.css'
 import './styles/pages.css'
 
+// QR codes printed by the old recipes app point at /#recipe/<id>
+const legacy = window.location.hash.match(/^#recipe\/([^/?#]+)/)
+if (legacy) window.history.replaceState(null, '', `/recipes/${legacy[1]}`)
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

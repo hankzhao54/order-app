@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { Database, Json } from './database.types'
 import { DEFAULT_CUTOFF } from './dates'
+import type { Recipe, RecipeCategory } from './recipes'
 import type {
   BuyTask, CatalogItem, Category, CutoffConfig, Location, OrderStatus, OrderType, OrderWithLines, Supplier,
 } from './types'
@@ -502,4 +503,106 @@ export async function listAudit(since: string | null) {
 export function logAudit(action: string, target?: string | null, detail?: Record<string, unknown> | null) {
   rpc('log_audit', { p_action: action, p_target: target ?? undefined, p_detail: (detail ?? undefined) as Json | undefined })
     .catch(e => console.warn('audit log failed:', e))
+}
+
+// ---- recipes ---------------------------------------------------------------------------------
+
+
+const RECIPE_LIST = 'id, hu_name, en_name, category, section, serves, prep_time, cook_time, pack_spec, shelf_life, vacuum_level, status, allergens, author_id, author_name, cover_image, created_at, updated_at, ingredients'
+
+export async function listRecipes(): Promise<Recipe[]> {
+  const { data, error } = await supabase.from('recipes').select(RECIPE_LIST).order('created_at', { ascending: false })
+  fail(error)
+  return (data ?? []) as unknown as Recipe[]
+}
+
+export async function getRecipe(id: string): Promise<Recipe | null> {
+  const { data, error } = await supabase.from('recipes').select('*').eq('id', id).maybeSingle()
+  fail(error)
+  return (data as unknown as Recipe | null) ?? null
+}
+
+export type RecipeInput = Omit<Recipe, 'id' | 'author_id' | 'author_name' | 'created_at' | 'updated_at'> & { id?: string }
+
+export async function saveRecipe(r: RecipeInput, action?: string): Promise<{ id: string; created: boolean }> {
+  const res = await rpc('save_recipe', { p: r as unknown as Json, p_action: action })
+  return res as unknown as { id: string; created: boolean }
+}
+
+export const deleteRecipe = (id: string) => rpc('delete_recipe', { p_id: id })
+export const restoreRecipeVersion = (versionId: number) => rpc('restore_recipe_version', { p_version: versionId })
+
+export async function listRecipeVersions(recipeId: string) {
+  const { data, error } = await supabase.from('recipe_versions')
+    .select('id, recipe_id, snapshot, edited_by_name, created_at')
+    .eq('recipe_id', recipeId).order('created_at', { ascending: false }).limit(50)
+  fail(error)
+  return (data ?? []) as unknown as { id: number; recipe_id: string; snapshot: Recipe & { deleted?: boolean }; edited_by_name: string | null; created_at: string }[]
+}
+
+export async function listRecipeCategories(): Promise<RecipeCategory[]> {
+  const { data, error } = await supabase.from('recipe_categories').select('id, name_en, name_hu, color, sort_order').order('sort_order').order('id')
+  fail(error)
+  return (data ?? []) as RecipeCategory[]
+}
+
+export async function saveRecipeCategories(rows: RecipeCategory[], removedIds: number[]) {
+  if (rows.length) {
+    const { error } = await supabase.from('recipe_categories').upsert(rows, { onConflict: 'id' })
+    fail(error)
+  }
+  if (removedIds.length) {
+    const { error } = await supabase.from('recipe_categories').delete().in('id', removedIds)
+    fail(error)
+  }
+}
+
+export async function listRecipeFavorites(userId: string): Promise<string[]> {
+  const { data, error } = await supabase.from('recipe_favorites').select('recipe_id').eq('user_id', userId)
+  fail(error)
+  return (data ?? []).map(r => r.recipe_id)
+}
+
+export async function setRecipeFavorite(userId: string, recipeId: string, on: boolean) {
+  const { error } = on
+    ? await supabase.from('recipe_favorites').insert({ user_id: userId, recipe_id: recipeId })
+    : await supabase.from('recipe_favorites').delete().eq('user_id', userId).eq('recipe_id', recipeId)
+  if (error && error.code !== '23505') fail(error)
+}
+
+/** Catalog items (order products) that point at a recipe. */
+export async function productsForRecipe(recipeId: string) {
+  const { data, error } = await supabase.from('catalog_items')
+    .select('id, name_en, name_hu, order_unit, stock_unit, default_fulfillment, is_active').eq('recipe_ref', recipeId)
+  fail(error)
+  return data ?? []
+}
+
+export const linkRecipe = (itemId: string, recipeId: string | null) => rpc('link_recipe', { p_item: itemId, p_recipe: recipeId ?? '' })
+
+/** Downscale to ≤1200 px JPEG and upload to the recipe-images bucket; returns the public URL. */
+export async function uploadRecipeImage(file: File, folder: 'covers' | 'ings' | 'steps'): Promise<string> {
+  const blob = await compressImage(file)
+  const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`
+  const { error } = await supabase.storage.from('recipe-images').upload(path, blob, { contentType: 'image/jpeg', upsert: false })
+  fail(error as { message: string } | null)
+  return supabase.storage.from('recipe-images').getPublicUrl(path).data.publicUrl
+}
+
+function compressImage(file: File, maxDim = 1200, quality = 0.8): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+      const c = document.createElement('canvas')
+      c.width = Math.round(img.width * scale)
+      c.height = Math.round(img.height * scale)
+      c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height)
+      URL.revokeObjectURL(url)
+      c.toBlob(b => (b ? resolve(b) : reject(new Error('Image compression failed'))), 'image/jpeg', quality)
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Not a readable image')) }
+    img.src = url
+  })
 }
