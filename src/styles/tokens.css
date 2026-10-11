@@ -1,0 +1,74 @@
+/* Design tokens. Light is the default; dark overrides below. */
+:root {
+  color-scheme: light;
+  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+
+  --bg: #f5f4f0;
+  --surface: #ffffff;
+  --surface-2: #f9f8f5;
+  --surface-3: #efede7;
+  --border: #e3e0d8;
+  --border-strong: #cfcac0;
+  --text: #1d2126;
+  --text-2: #5b6168;
+  --text-3: #8b9097;
+
+  --brand: #1c2b3a;
+  --brand-contrast: #ffffff;
+  --accent: #2463eb;
+  --accent-soft: #e8efff;
+  --focus: #2463eb;
+
+  --ok: #16794a;       --ok-soft: #e3f4ea;
+  --warn: #a65f00;     --warn-soft: #fff1d9;
+  --bad: #c2352b;      --bad-soft: #fde8e6;
+  --info: #1f5fb8;     --info-soft: #e5eefb;
+  --buy: #7a3fb3;      --buy-soft: #f1e8fa;
+  --accentc: #b0427a;  --accentc-soft: #fbe7f1;
+  --neutral: #5b6168;  --neutral-soft: #eeede8;
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(20, 24, 30, 0.06);
+  --shadow: 0 1px 2px rgba(20, 24, 30, 0.05), 0 4px 16px rgba(20, 24, 30, 0.06);
+  --shadow-lg: 0 12px 40px rgba(20, 24, 30, 0.18);
+
+  --sidebar-w: 232px;
+  --topbar-h: 52px;
+  --bottom-h: 64px;
+  --tap: 44px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #111418;
+  --surface: #181c21;
+  --surface-2: #1d2228;
+  --surface-3: #252b32;
+  --border: #2b3139;
+  --border-strong: #3a424c;
+  --text: #e8eaed;
+  --text-2: #a7adb5;
+  --text-3: #7c838c;
+
+  --brand: #e8eaed;
+  --brand-contrast: #111418;
+  --accent: #6a9bff;
+  --accent-soft: #1d2a45;
+  --focus: #6a9bff;
+
+  --ok: #4cc38a;       --ok-soft: #173326;
+  --warn: #f0b04a;     --warn-soft: #3a2c12;
+  --bad: #ff7a70;      --bad-soft: #3d1c1a;
+  --info: #7fb0ff;     --info-soft: #1a2b45;
+  --buy: #c79bf2;      --buy-soft: #2e2140;
+  --accentc: #f08cc0;  --accentc-soft: #3a1d2d;
+  --neutral: #a7adb5;  --neutral-soft: #252b32;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.6);
+}

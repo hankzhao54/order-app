@@ -1,64 +1,92 @@
-# Order App — 订货配送系统 (frontend)
+# Order App v2 — 订货 + 菜谱 一体系统
 
-Independent front-end for the ordering & distribution system. Shares the same
-Supabase project as the recipe app; all its tables live in the `ordering` schema.
+Ordering, central-kitchen production, dispatch, buy list, inventory, labels **and recipes** for the restaurant group —
+one app, one login, one database (everything in the `ordering` schema).
 
 ## Stack
-Vite + React + React Router + Supabase + PWA (matches the recipe app).
+Vite 7 · React 19 · TypeScript (strict) · React Router 7 · TanStack Query 5 · Supabase JS 2 · PWA.
+No UI framework — a small design system in `src/ui` + `src/styles`. UI in English / Magyar / 中文.
 
-## Setup
+## Run locally
 ```bash
 npm install
-cp .env.example .env.local   # fill in Supabase URL + anon key (same project as recipe app)
+cp .env.example .env.local   # Supabase URL + anon key (same project as the recipe app)
 npm run dev
+npm test          # unit tests (dates, permissions, kitchen grouping, translations…)
+npm run build     # type-check + production build
 ```
 
-## Prerequisites in Supabase
-1. Run `ordering_system_init.sql` once in the SQL Editor.
-2. Apply the migrations in `supabase/migrations/` **in numeric order**
-   (001 → 006). They are idempotent — re-running any of them is safe.
-   001/002 duplicate the older root-level `supabase-procurement-orders.sql`
-   and `supabase-store-manager-catalog.sql`; if you already ran those two,
-   001/002 are no-ops.
-3. Project Settings → API → Exposed schemas → add `ordering`.
-4. Create users via Supabase Auth, then assign role/location in the Users admin
-   page (or directly: `insert into ordering.profiles (user_id, role) ...`).
-5. Optional: run `supabase/tests/consistency_tests.sql` in the SQL Editor to
-   verify the RPCs / RLS / triggers (it rolls itself back, no data left).
+## Database
+The schema is unchanged from v1 — v2 only **adds** migration `007_v2_rpcs.sql`
+(v1 keeps working against it, so both can run side by side during the switch).
 
-## Roles & routing
-- `restaurant_orderer` → /order, /procurement, /history. Orders + buy-list
-  requests for their own location only (enforced by RLS).
-- `store_manager`      → everything the orderer has, plus /inventory and
-  /admin/catalog (add/edit products & categories; supplier prices stay
-  admin-only).
-- `kitchen_manager`    → /kitchen, /labels, /dispatch, /reports, /inventory.
-  Confirms production, fulfils from stock, completes orders.
-- `driver`             → /dispatch, /procurement. Works the buy list
-  (bought / can't) and delivers; cannot create or delete other people's
-  buy-list entries.
-- `bar_staff`          → /inventory only (stocktake for their location).
-- `admin`              → /admin/* (dashboard / catalog / suppliers /
-  locations / users) + everything above.
+1. Supabase → SQL Editor → run `supabase/migrations/007_v2_rpcs.sql` (safe to re-run).
+2. Optional: run `supabase/tests/v2_rpc_tests.sql` and `supabase/tests/consistency_tests.sql`;
+   both roll back and print `ALL … PASSED`.
+3. Run `supabase/migrations/008_recipe_roles.sql` **on its own** (adds the `chef` / `kitchen_staff` roles —
+   Postgres needs this committed before 009 can use them).
+4. Run `supabase/migrations/009_merge_recipes.sql` (safe to re-run). Read the NOTICE output: it lists any
+   person whose recipe-app role differs from their ordering role (the ordering role wins).
+5. Optional: run `supabase/tests/recipes_merge_tests.sql` — prints `ALL RECIPE MERGE TESTS PASSED`.
+6. Redeploy the `admin-create-user` Edge Function (it now accepts `bar_staff`, `chef`, `kitchen_staff`):
+   `npx supabase functions deploy admin-create-user --project-ref fuqkjwfbwtnkukxoytfj`
 
-## Data-consistency architecture (migrations 003–006)
-- `created_by` on orders/procurement_tasks is stamped by a DB trigger from
-  `auth.uid()` — client-supplied ids are ignored.
-- Status transitions for orders, order lines and buy-list tasks are validated
-  by DB triggers; the frontend state machine (`src/lib/orderLifecycle.js`) is
-  a convenience layer and additionally uses compare-and-swap updates
-  (`.eq(status, expected)`) so two clients can't overwrite each other.
-- Multi-step flows run as transactional RPCs: `submit_order` (create/merge,
-  incl. procurement orders + their buy-list tasks), `kitchen_set_produced` /
-  `kitchen_reset_item` / `kitchen_use_stock` (production, undo, DB-level
-  stock reservations), `dispatch_items` (stock check + FIFO consume + status,
-  all-or-nothing), `set_procurement_task_status` / `delete_procurement_task`
-  (task change + order-line cascade + parent-order recompute).
+Fresh database from zero: `supabase/schema.sql`, then `supabase/migrations/001…009` in order.
+(`supabase/legacy/` holds the original v1 bootstrap scripts, for reference only.)
 
-## Notes
-- `default_fulfillment` on a catalog item decides make vs buy per line (a DB
-  trigger copies it onto each order line at insert).
-- Procurement orders (`order_type = 'procurement'`) skip the kitchen: lines go
-  straight to the driver's buy list and the parent order auto-completes when
-  every line is resolved.
-- Add app icons at `public/icon-192.png` and `public/icon-512.png` for the PWA.
+### What 007 adds
+Every multi-step write is one transactional, role-checked RPC — the browser never does two writes in a row:
+
+| RPC | Replaces (v1) |
+|---|---|
+| `receive_items(ids)` | status flip + `add_batch` as two calls (could lose / double stock) |
+| `mark_item_bought(id)` | dispatch desk writing `ready` directly — also resolves the linked buy-list task |
+| `mark_item_unavailable(id, reason)` | direct status write |
+| `send_item_to_buyer(id)` | *(new)* kitchen hands a purchase line to the driver's buy list |
+| `set_orders_status(ids, action)` | client-side compare-and-swap; rules (all lines handled before complete, archive only when delivered, stores may cancel their own untouched order) now enforced in the DB |
+| `update_order_line` / `delete_order_line` | direct table writes, now only while the line is pending |
+| `edit_batch(id, qty)` | direct batch edit without a stock-move log |
+
+### What 009 does (recipe merge)
+- Moves the recipe app's tables into `ordering`: `recipes`, `recipe_versions`, `recipe_categories` (data kept as-is).
+- One user list: recipe-app users get an `ordering.profiles` row (admin→admin, chef→chef, staff→kitchen_staff);
+  people who already had an ordering account keep their ordering role.
+- One audit log: the recipe app's history is copied into `ordering.audit_log` (tagged `source: recipes-app`).
+- `catalog_items.recipe_ref` links an orderable product to its recipe (auto-linked where the name matches exactly;
+  edit in Catalog). The kitchen ticket shows a recipe button on linked lines.
+- Recipe writes go through RPCs: `save_recipe`, `delete_recipe`, `restore_recipe_version`, `link_recipe`
+  (every save keeps a version, last 30 kept).
+- **Compatibility views** `public.recipes / recipe_versions / categories` keep the old recipe app working
+  against the same data until you switch it off.
+
+### Cutover for the recipe app
+1. Run 008 + 009, deploy this app. Both apps now show the same recipes — edits in either appear in the other.
+2. Tell the kitchen to use the new app (`/recipes`). Old QR codes (`…/#recipe/<id>`) work if the old
+   recipe domain redirects to this app — in Vercel, point `restaurant-recipes-indol` at a redirect to the
+   order app URL, keeping the hash.
+3. After a few quiet weeks: `drop view public.recipes, public.recipe_versions, public.categories;`
+   and archive the old repo. The storage bucket `recipe-images` stays in use.
+
+## Structure
+```
+src/
+  lib/        api.ts (every query/RPC), auth, permissions, i18n, dates, status, kitchen, inventory, csv
+  lib/database.types.ts   generated from the schema (scripts/gen-db-types.py or `supabase gen types`)
+  ui/         Button, Segmented, Stepper, Sheet, toasts & dialogs…
+  layout/     AppShell — sidebar on desktop, bottom tab bar on phones
+  features/   order · procurement · kitchen · dispatch · inventory · labels · history · reports · recipes · admin
+```
+
+## Roles
+| Role | Can use |
+|---|---|
+| restaurant_orderer | Order, Buy list (requests), Receiving, History, Recipes (view) |
+| store_manager | + Inventory, Catalog (no prices) |
+| bar_staff | Inventory |
+| driver | Dispatch, Buy list (buying), History (all stores) |
+| kitchen_manager | Recipes (full), Kitchen, Dispatch, Labels, Inventory (all sites), Receiving, Reports, Order for any store |
+| chef | Recipes (view + create/edit) |
+| kitchen_staff | Recipes (view only) |
+| admin | everything + Dashboard, Catalog prices, Suppliers, Locations, Users, Audit log, Settings |
+
+v1 URLs (`/procurement`, `/admin/dashboard`) redirect to their v2 pages.
